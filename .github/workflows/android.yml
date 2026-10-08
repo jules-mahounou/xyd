@@ -121,10 +121,12 @@ jobs:
           FTP_HOST: ${{ secrets.FTP_HOST }}
           FTP_USER: ${{ secrets.FTP_USER }}
           FTP_PASSWORD: ${{ secrets.FTP_PASSWORD }}
-          FTP_DIR: ${{ vars.FTP_DIR || 'htdocs' }}
+          # Vide = dossier d'arrivée de la connexion FTP (chez xydhub.tech, c'est déjà /htdocs).
+          FTP_DIR: ${{ vars.FTP_DIR }}
         run: |
           if [ -z "$FTP_HOST" ]; then echo "::warning::FTP non configuré : upload manuel de xyd.apk requis."; exit 0; fi
-          up() { curl -sS --fail --ftp-create-dirs --user "$FTP_USER:$FTP_PASSWORD" -T "$1" "ftp://$FTP_HOST/$FTP_DIR/$2"; }
+          DIR="${FTP_DIR#/}"; DIR="${DIR%/}"; [ "$DIR" = "." ] && DIR=""
+          up() { curl -sS --fail --ftp-create-dirs --user "$FTP_USER:$FTP_PASSWORD" -T "$1" "ftp://$FTP_HOST/${DIR:+$DIR/}$2"; }
           up xyd.apk "xyd.apk"
           up web/index.html "index.html"
           up web/.htaccess ".htaccess"
