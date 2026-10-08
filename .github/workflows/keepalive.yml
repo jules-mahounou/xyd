@@ -1,0 +1,29 @@
+name: Supabase anti-pause
+
+# Le plan gratuit Supabase met le projet en pause après ~7 jours sans activité.
+# Une lecture de la base tous les 3 jours suffit à l'éviter. En cas d'échec,
+# le workflow passe en rouge et GitHub envoie un email.
+on:
+  schedule:
+    - cron: "17 6 */3 * *"   # 06:17 UTC, tous les 3 jours
+  workflow_dispatch:
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      SUPABASE_URL: ${{ vars.SUPABASE_URL || secrets.SUPABASE_URL }}
+      SUPABASE_ANON_KEY: ${{ vars.SUPABASE_ANON_KEY || secrets.SUPABASE_ANON_KEY }}
+    steps:
+      - name: Lecture de la base
+        run: |
+          for i in 1 2 3; do
+            CODE=$(curl -sS -o body.json -w "%{http_code}" \
+              "${SUPABASE_URL%/}/rest/v1/app_versions?select=version_code&order=version_code.desc&limit=1" \
+              -H "apikey: $SUPABASE_ANON_KEY") || CODE=000
+            if [ "$CODE" = "200" ]; then echo "Supabase actif : $(cat body.json)"; exit 0; fi
+            echo "Tentative $i : HTTP $CODE"; sleep 20
+          done
+          echo "::error::Supabase ne répond pas (projet en pause ?). Va sur le dashboard Supabase et clique « Restore project »."
+          exit 1

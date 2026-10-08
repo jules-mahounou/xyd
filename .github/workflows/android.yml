@@ -4,7 +4,7 @@ on:
   push:
     branches: ["**"]
     tags: ["v*"]
-    paths-ignore: ["supabase/**", "web/**", "**.md", ".github/workflows/backend.yml", ".github/workflows/web.yml"]
+    paths-ignore: ["supabase/**", "web/**", "**.md", ".github/workflows/backend.yml", ".github/workflows/web.yml", ".github/workflows/keepalive.yml"]
   pull_request:
   workflow_dispatch:
     inputs:
