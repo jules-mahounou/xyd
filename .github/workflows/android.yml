@@ -4,7 +4,7 @@ on:
   push:
     branches: ["**"]
     tags: ["v*"]
-    paths-ignore: ["supabase/**", "**.md"]
+    paths-ignore: ["supabase/**", "web/**", "**.md", ".github/workflows/backend.yml", ".github/workflows/web.yml"]
   pull_request:
   workflow_dispatch:
     inputs:
@@ -128,9 +128,6 @@ jobs:
           DIR="${FTP_DIR#/}"; DIR="${DIR%/}"; [ "$DIR" = "." ] && DIR=""
           up() { curl -sS --fail --ftp-create-dirs --user "$FTP_USER:$FTP_PASSWORD" -T "$1" "ftp://$FTP_HOST/${DIR:+$DIR/}$2"; }
           up xyd.apk "xyd.apk"
-          up web/index.html "index.html"
-          up web/.htaccess ".htaccess"
-          up web/logo.svg "logo.svg"
           echo "APK en ligne : https://xydhub.tech/xyd.apk"
 
       - name: Déclarer la version dans Supabase

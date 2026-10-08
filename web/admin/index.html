@@ -1,0 +1,576 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>xyd · admin</title>
+<meta name="robots" content="noindex, nofollow">
+<meta name="theme-color" content="#000000">
+<link rel="icon" href="../logo.svg" type="image/svg+xml">
+<style>
+  :root { --bg:#000; --grey:#c6c6c6; --text:#ededed; --muted:#8c8c8c; --card:#0f0f0f; --card2:#161616; --line:#262626; --danger:#e5484d; --ok:#46a758; }
+  * { box-sizing:border-box; margin:0; padding:0; }
+  html,body { background:var(--bg); color:var(--text); }
+  body { font:15px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif; -webkit-font-smoothing:antialiased; padding-bottom:120px; }
+  .wrap { max-width:960px; margin:0 auto; padding:0 16px; }
+  header { position:sticky; top:0; z-index:5; background:rgba(0,0,0,.85); backdrop-filter:blur(10px); border-bottom:1px solid var(--line); }
+  header .wrap { display:flex; align-items:center; gap:12px; height:60px; }
+  header svg { width:28px; height:28px; }
+  header b { font-size:18px; letter-spacing:-.01em; }
+  header .sp { flex:1; }
+  header small { color:var(--muted); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:40vw; }
+  h2 { font-size:22px; margin:28px 0 14px; letter-spacing:-.01em; }
+  h3 { font-size:16px; margin:0; }
+  label { display:block; font-size:12px; text-transform:uppercase; letter-spacing:.08em; color:var(--muted); margin:16px 0 6px; font-weight:600; }
+  input[type=text],input[type=email],input[type=password],input[type=number],textarea,select {
+    width:100%; background:var(--card); border:1px solid var(--line); color:var(--text); border-radius:10px;
+    padding:11px 12px; font:inherit; outline:none; transition:border-color .15s;
+  }
+  input:focus,textarea:focus,select:focus { border-color:var(--grey); }
+  textarea { min-height:96px; resize:vertical; }
+  button,.btn { font:inherit; font-weight:600; border:0; border-radius:10px; padding:10px 16px; cursor:pointer; background:var(--grey); color:#000; display:inline-flex; align-items:center; gap:8px; }
+  button.ghost { background:transparent; color:var(--grey); border:1px solid var(--line); }
+  button.danger { background:transparent; color:var(--danger); border:1px solid #3a1d1e; }
+  button.link { background:none; padding:6px; color:var(--muted); font-weight:500; }
+  button:disabled { opacity:.45; cursor:default; }
+  .row { display:flex; gap:12px; align-items:center; flex-wrap:wrap; }
+  .grid2 { display:grid; grid-template-columns:1fr 1fr; gap:0 16px; }
+  @media (max-width:640px) { .grid2 { grid-template-columns:1fr; } }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:14px; padding:18px; margin-top:16px; }
+  .muted { color:var(--muted); }
+  .err { color:var(--danger); margin-top:10px; min-height:20px; font-size:14px; }
+  .center { min-height:80vh; display:grid; place-items:center; }
+  .login { width:100%; max-width:360px; text-align:center; }
+  .login svg { width:64px; height:64px; margin-bottom:12px; }
+  .login form { text-align:left; margin-top:20px; }
+  .login button { width:100%; justify-content:center; margin-top:20px; height:48px; }
+  .titles { display:grid; grid-template-columns:repeat(auto-fill,minmax(140px,1fr)); gap:16px; }
+  .tile { cursor:pointer; }
+  .tile .poster { aspect-ratio:2/3; border-radius:10px; background:var(--card2) center/cover no-repeat; border:1px solid var(--line); display:grid; place-items:center; color:var(--muted); font-weight:600; padding:8px; text-align:center; position:relative; }
+  .tile .name { margin-top:6px; font-size:14px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .badge { font-size:11px; padding:2px 7px; border-radius:20px; background:var(--card2); border:1px solid var(--line); color:var(--grey); }
+  .badge.off { color:var(--danger); border-color:#3a1d1e; }
+  .tile .badge { position:absolute; top:6px; left:6px; background:rgba(0,0,0,.7); }
+  .imgs { display:flex; gap:16px; flex-wrap:wrap; }
+  .imgbox { cursor:pointer; border:1px dashed var(--line); border-radius:10px; background:var(--card2) center/cover no-repeat; display:grid; place-items:center; color:var(--muted); font-size:13px; text-align:center; }
+  .imgbox.poster { width:120px; aspect-ratio:2/3; }
+  .imgbox.backdrop { width:240px; aspect-ratio:16/9; }
+  .drop { border:1px dashed var(--line); border-radius:12px; padding:18px; text-align:center; color:var(--muted); cursor:pointer; transition:border-color .15s, background .15s; }
+  .drop:hover,.drop.over { border-color:var(--grey); background:var(--card2); color:var(--grey); }
+  .season { border-top:1px solid var(--line); padding-top:14px; margin-top:14px; }
+  .season:first-of-type { border-top:0; margin-top:0; padding-top:0; }
+  table { width:100%; border-collapse:collapse; margin-top:10px; }
+  td { padding:6px 4px; border-bottom:1px solid #141414; vertical-align:middle; }
+  td.n { width:36px; color:var(--muted); font-weight:600; }
+  td.meta { color:var(--muted); font-size:13px; white-space:nowrap; width:1%; }
+  td input { padding:7px 9px; border-radius:8px; }
+  .uploads { position:fixed; left:0; right:0; bottom:0; z-index:9; background:rgba(10,10,10,.96); border-top:1px solid var(--line); max-height:40vh; overflow:auto; }
+  .uploads .wrap { padding:12px 16px; }
+  .up { display:grid; grid-template-columns:1fr auto; gap:4px 12px; font-size:13px; padding:6px 0; }
+  .bar { grid-column:1/-1; height:4px; background:var(--line); border-radius:4px; overflow:hidden; }
+  .bar i { display:block; height:100%; background:var(--grey); width:0; transition:width .2s; }
+  .up.done .bar i { background:var(--ok); }
+  .up.fail .bar i { background:var(--danger); }
+  .toast { position:fixed; top:72px; left:50%; transform:translateX(-50%); background:var(--card2); border:1px solid var(--line); padding:10px 16px; border-radius:10px; z-index:20; font-size:14px; }
+  [hidden] { display:none !important; }
+</style>
+</head>
+<body>
+
+<svg width="0" height="0" style="position:absolute"><symbol id="logo" viewBox="351 351 1230 1230"><g fill="#C6C6C6"><path d="M736,357L845,367L999,627L938,697Z"/><path d="M1214,396L1396,396L548,1574L367,1574Z"/><path d="M1158,869L1565,1574L1109,1574L995,1378C940,1285 930,1140 1018,1050Z"/></g></symbol></svg>
+
+<!-- Connexion -->
+<section id="v-login" class="center" hidden>
+  <div class="login wrap">
+    <svg><use href="#logo"/></svg>
+    <h2 style="margin:0">Admin xyd</h2>
+    <p class="muted">Connecte-toi avec ton compte xyd.</p>
+    <form id="f-login">
+      <label for="l-email">Email</label>
+      <input id="l-email" type="email" autocomplete="username" required>
+      <label for="l-pass">Mot de passe</label>
+      <input id="l-pass" type="password" autocomplete="current-password" required>
+      <button type="submit">Se connecter</button>
+      <div class="err" id="l-err"></div>
+    </form>
+  </div>
+</section>
+
+<!-- Application -->
+<section id="v-app" hidden>
+  <header><div class="wrap">
+    <svg><use href="#logo"/></svg><b>admin</b><span class="sp"></span>
+    <small id="who"></small>
+    <button class="link" id="b-logout">Déconnexion</button>
+  </div></header>
+  <main class="wrap" id="main"></main>
+</section>
+
+<div class="uploads" id="uploads" hidden><div class="wrap" id="uplist"></div></div>
+<div class="toast" id="toast" hidden></div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
+<script>
+"use strict";
+// Injecté au déploiement par le workflow « Site ».
+const SUPABASE_URL = "__SUPABASE_URL__";
+const SUPABASE_ANON_KEY = "__SUPABASE_ANON_KEY__";
+if (!window.supabase) {
+  document.body.innerHTML = '<p style="padding:24px">Impossible de charger Supabase (connexion ou bloqueur de contenu).</p>';
+  throw new Error("supabase-js non chargé");
+}
+const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+const $ = (id) => document.getElementById(id);
+let titles = [];
+let uploading = 0;
+
+// ---------------------------------------------------------------- utilitaires
+function h(tag, attrs, ...kids) {
+  const el = document.createElement(tag);
+  for (const [k, v] of Object.entries(attrs || {})) {
+    if (v == null || v === false) continue;
+    if (k.startsWith("on")) el.addEventListener(k.slice(2), v);
+    else if (k === "style" && typeof v === "object") Object.assign(el.style, v);
+    else el.setAttribute(k, v === true ? "" : v);
+  }
+  for (const c of kids.flat()) if (c != null && c !== false) el.append(c.nodeType ? c : String(c));
+  return el;
+}
+const fmtSize = (b) => !b ? "" : b >= 1 << 30 ? (b / 1073741824).toFixed(1).replace(".", ",") + " Go" : Math.round(b / 1048576) + " Mo";
+const fmtDur = (s) => !s ? "" : s >= 3600 ? `${Math.floor(s / 3600)} h ${String(Math.floor(s % 3600 / 60)).padStart(2, "0")}` : `${Math.round(s / 60)} min`;
+const pad = (n) => String(n).padStart(2, "0");
+const rand = () => Math.random().toString(36).slice(2, 8);
+const slug = (s) => (s || "x").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase()
+  .replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 40) || "x";
+const extOf = (f) => { const e = (f.name.split(".").pop() || "").toLowerCase(); return ["mp4", "m4v", "mkv", "mov"].includes(e) ? e : "mp4"; };
+
+function toast(msg, ms = 2600) {
+  const t = $("toast"); t.textContent = msg; t.hidden = false;
+  clearTimeout(toast.t); toast.t = setTimeout(() => (t.hidden = true), ms);
+}
+function fail(e) { console.error(e); toast("⚠️ " + (e?.message || e), 5000); }
+
+/** Durée d'une vidéo locale (lecture des métadonnées par le navigateur). 0 si inconnue. */
+function probeDuration(file) {
+  return new Promise((res) => {
+    const v = document.createElement("video");
+    const url = URL.createObjectURL(file);
+    const done = (d) => { URL.revokeObjectURL(url); res(Math.round(d || 0)); };
+    const timer = setTimeout(() => done(0), 10000);
+    v.preload = "metadata";
+    v.onloadedmetadata = () => { clearTimeout(timer); done(isFinite(v.duration) ? v.duration : 0); };
+    v.onerror = () => { clearTimeout(timer); done(0); };
+    v.src = url;
+  });
+}
+
+/** Nom d'épisode déduit du fichier : « Dark.S01E03.Le.passé.mp4 » → « Le passé ». */
+function nameFromFile(f) {
+  let n = f.name.replace(/\.[^.]+$/, "");
+  n = n.replace(/.*?s\d{1,2}\s*e\d{1,3}/i, "").replace(/^[\s._-]*(e|ep|episode)?\s*\d{1,3}\b/i, "");
+  n = n.replace(/[._]+/g, " ").replace(/\s+-\s+/g, " ").replace(/\b(1080p|720p|480p|x264|x265|h264|hevc|web[- ]?dl|bluray|multi|vostfr|french)\b.*/i, "");
+  return n.trim().replace(/^-+|-+$/g, "").trim();
+}
+
+// ---------------------------------------------------------------- R2 & images
+async function r2(body) {
+  const { data, error } = await sb.functions.invoke("admin-r2", { body });
+  if (error) {
+    let msg = error.message;
+    try { msg = (await error.context.json()).error || msg; } catch {}
+    throw new Error(msg);
+  }
+  return data;
+}
+const r2Delete = (keys) => keys.filter(Boolean).length ? r2({ action: "delete", keys: keys.filter(Boolean) }).catch(fail) : null;
+
+/** Envoie un fichier directement dans R2 via une URL PUT pré-signée, avec progression. */
+async function uploadToR2(file, key, label) {
+  const row = addUploadRow(label || file.name, file.size);
+  uploading++;
+  try {
+    const { url } = await r2({ action: "sign-upload", key });
+    await new Promise((res, rej) => {
+      const x = new XMLHttpRequest();
+      x.open("PUT", url);
+      x.upload.onprogress = (e) => e.lengthComputable && row.progress(e.loaded / e.total);
+      x.onload = () => (x.status >= 200 && x.status < 300 ? res() : rej(new Error(`R2 a refusé l'envoi (HTTP ${x.status})`)));
+      x.onerror = () => rej(new Error("Envoi interrompu (réseau ou CORS du bucket R2)"));
+      x.send(file);
+    });
+    row.done();
+  } catch (e) {
+    row.fail(e.message);
+    throw e;
+  } finally {
+    uploading--;
+  }
+}
+
+function addUploadRow(name, size) {
+  $("uploads").hidden = false;
+  const bar = h("i");
+  const status = h("span", { class: "muted" }, "0 %");
+  const el = h("div", { class: "up" }, h("span", {}, name, " ", h("span", { class: "muted" }, fmtSize(size))), status, h("div", { class: "bar" }, bar));
+  $("uplist").prepend(el);
+  return {
+    progress(p) { bar.style.width = (p * 100).toFixed(1) + "%"; status.textContent = Math.floor(p * 100) + " %"; },
+    done() { this.progress(1); el.classList.add("done"); status.textContent = "✓ envoyé"; setTimeout(() => { el.remove(); if (!$("uplist").children.length) $("uploads").hidden = true; }, 4000); },
+    fail(m) { el.classList.add("fail"); bar.style.width = "100%"; status.textContent = "échec : " + m; },
+  };
+}
+
+/** Redimensionne une image (JPEG) puis l'envoie dans le bucket public « posters ». */
+async function uploadImage(file, titleId, kind) {
+  const maxW = kind === "poster" ? 600 : 1280;
+  const bmp = await createImageBitmap(file);
+  const scale = Math.min(1, maxW / bmp.width);
+  const c = document.createElement("canvas");
+  c.width = Math.round(bmp.width * scale); c.height = Math.round(bmp.height * scale);
+  c.getContext("2d").drawImage(bmp, 0, 0, c.width, c.height);
+  const blob = await new Promise((r) => c.toBlob(r, "image/jpeg", 0.85));
+  const path = `${titleId}/${kind}-${Date.now()}.jpg`;
+  const { error } = await sb.storage.from("posters").upload(path, blob, { contentType: "image/jpeg", upsert: true });
+  if (error) throw error;
+  return sb.storage.from("posters").getPublicUrl(path).data.publicUrl;
+}
+
+function pickFiles(accept, multiple) {
+  return new Promise((res) => {
+    const i = h("input", { type: "file", accept, multiple });
+    i.onchange = () => res([...i.files]);
+    i.click();
+  });
+}
+
+// ---------------------------------------------------------------- données
+async function load() {
+  const { data, error } = await sb.from("titles")
+    .select("*, seasons(*, episodes(*))")
+    .order("sort").order("created_at", { ascending: false });
+  if (error) throw error;
+  for (const t of data) {
+    t.seasons.sort((a, b) => a.number - b.number);
+    for (const s of t.seasons) s.episodes.sort((a, b) => a.number - b.number);
+  }
+  titles = data;
+}
+
+// ---------------------------------------------------------------- vues
+async function boot() {
+  const { data: { session } } = await sb.auth.getSession();
+  if (!session) return showLogin();
+  const { data: isAdmin, error } = await sb.rpc("is_admin");
+  if (error || isAdmin !== true) {
+    await sb.auth.signOut();
+    return showLogin("Ce compte n'est pas administrateur.");
+  }
+  $("who").textContent = session.user.email;
+  $("v-login").hidden = true;
+  $("v-app").hidden = false;
+  try { await load(); } catch (e) { fail(e); }
+  renderList();
+}
+
+function showLogin(msg) {
+  $("v-app").hidden = true;
+  $("v-login").hidden = false;
+  $("l-err").textContent = msg || "";
+}
+
+$("f-login").onsubmit = async (e) => {
+  e.preventDefault();
+  $("l-err").textContent = "";
+  const { error } = await sb.auth.signInWithPassword({ email: $("l-email").value.trim(), password: $("l-pass").value });
+  if (error) return ($("l-err").textContent = /invalid/i.test(error.message) ? "Email ou mot de passe incorrect" : error.message);
+  boot();
+};
+$("b-logout").onclick = async () => { await sb.auth.signOut(); showLogin(); };
+window.addEventListener("beforeunload", (e) => { if (uploading) { e.preventDefault(); e.returnValue = ""; } });
+
+function renderList() {
+  const main = $("main");
+  main.replaceChildren(
+    h("div", { class: "row", style: { marginTop: "24px" } },
+      h("h2", { style: { margin: 0, flex: 1 } }, "Catalogue"),
+      h("button", { onclick: () => renderEditor(newTitle("serie")) }, "+ Série"),
+      h("button", { onclick: () => renderEditor(newTitle("film")) }, "+ Film"),
+    ),
+    titles.length ? h("div", { class: "titles", style: { marginTop: "20px" } },
+      titles.map((t) => h("div", { class: "tile", onclick: () => renderEditor(t) },
+        h("div", { class: "poster", style: t.poster_url ? { backgroundImage: `url("${t.poster_url}")` } : {} },
+          t.poster_url ? "" : t.name,
+          h("span", { class: "badge" + (t.published ? "" : " off") }, t.kind === "film" ? "Film" : `${t.seasons.length} saison${t.seasons.length > 1 ? "s" : ""}`, t.published ? "" : " · masqué")),
+        h("div", { class: "name" }, t.name),
+      )),
+    ) : h("p", { class: "muted", style: { marginTop: "24px" } }, "Aucun contenu. Commence par ajouter une série ou un film."),
+  );
+}
+
+function newTitle(kind) {
+  return { _new: true, id: crypto.randomUUID(), kind, name: "", synopsis: "", year: new Date().getFullYear(), published: true, sort: 0, poster_url: null, backdrop_url: null, video_key: null, duration_s: 0, size_bytes: 0, seasons: [] };
+}
+
+function renderEditor(t) {
+  const isFilm = t.kind === "film";
+  const f = {
+    name: h("input", { type: "text", value: t.name, placeholder: isFilm ? "Titre du film" : "Nom de la série" }),
+    year: h("input", { type: "number", value: t.year || "", min: 1900, max: 2100 }),
+    sort: h("input", { type: "number", value: t.sort ?? 0 }),
+    synopsis: h("textarea", { placeholder: "Résumé" }),
+    published: h("input", { type: "checkbox", checked: t.published }),
+  };
+  f.synopsis.value = t.synopsis || "";
+  let pendingVideo = null; // nouveau film : vidéo choisie avant l'enregistrement
+  const err = h("div", { class: "err" });
+
+  const imgBox = (kind) => {
+    const key = kind === "poster" ? "poster_url" : "backdrop_url";
+    const box = h("div", { class: "imgbox " + kind, title: "Changer l'image" }, t[key] ? "" : (kind === "poster" ? "Affiche\n2:3" : "Image 16:9"));
+    if (t[key]) box.style.backgroundImage = `url("${t[key]}")`;
+    box.onclick = async () => {
+      const [file] = await pickFiles("image/*");
+      if (!file) return;
+      box.textContent = "Envoi…";
+      try {
+        t[key] = await uploadImage(file, t.id, kind);
+        box.textContent = ""; box.style.backgroundImage = `url("${t[key]}")`;
+        if (!t._new) { await save({ [key]: t[key] }); toast("Image enregistrée"); }
+      } catch (e) { box.textContent = "Erreur"; fail(e); }
+    };
+    return box;
+  };
+
+  async function save(patch) {
+    const { error } = await sb.from("titles").update(patch).eq("id", t.id);
+    if (error) throw error;
+    Object.assign(t, patch);
+  }
+
+  // --- vidéo du film
+  const videoInfo = h("p", { class: "muted" });
+  const showVideoInfo = () => {
+    videoInfo.textContent = pendingVideo ? `Prêt à envoyer : ${pendingVideo.name} (${fmtSize(pendingVideo.size)})`
+      : t.video_key ? `${t.video_key} · ${fmtSize(t.size_bytes)} · ${fmtDur(t.duration_s)}` : "Aucune vidéo";
+  };
+  showVideoInfo();
+  const pickFilmVideo = async (files) => {
+    const [file] = files || await pickFiles("video/*,.mkv");
+    if (!file) return;
+    if (t._new) { pendingVideo = file; showVideoInfo(); return; }
+    try {
+      const old = t.video_key;
+      const key = `films/${slug(f.name.value || t.name)}-${t.id.slice(0, 8)}-${rand()}.${extOf(file)}`;
+      const duration = await probeDuration(file);
+      await uploadToR2(file, key, t.name);
+      await save({ video_key: key, size_bytes: file.size, duration_s: duration || t.duration_s });
+      if (old && old !== key) r2Delete([old]);
+      showVideoInfo(); toast("Vidéo remplacée");
+    } catch (e) { fail(e); }
+  };
+
+  // --- enregistrement
+  const saveBtn = h("button", { onclick: async () => {
+    err.textContent = "";
+    const row = {
+      name: f.name.value.trim(), synopsis: f.synopsis.value.trim(), year: Number(f.year.value) || null,
+      sort: Number(f.sort.value) || 0, published: f.published.checked,
+      poster_url: t.poster_url, backdrop_url: t.backdrop_url,
+    };
+    if (!row.name) return (err.textContent = "Le nom est obligatoire.");
+    saveBtn.disabled = true;
+    try {
+      if (t._new) {
+        if (isFilm) {
+          if (!pendingVideo) { saveBtn.disabled = false; return (err.textContent = "Choisis la vidéo du film."); }
+          const key = `films/${slug(row.name)}-${t.id.slice(0, 8)}-${rand()}.${extOf(pendingVideo)}`;
+          const duration = await probeDuration(pendingVideo);
+          await uploadToR2(pendingVideo, key, row.name);
+          Object.assign(row, { video_key: key, size_bytes: pendingVideo.size, duration_s: duration });
+          pendingVideo = null;
+        }
+        const { data, error } = await sb.from("titles").insert({ id: t.id, kind: t.kind, ...row }).select("*").single();
+        if (error) { if (row.video_key) r2Delete([row.video_key]); throw error; }
+        Object.assign(t, data, { seasons: [] });
+        delete t._new;
+        titles.unshift(t);
+        toast(isFilm ? "Film ajouté" : "Série créée — ajoute une saison");
+        renderEditor(t);
+        return;
+      }
+      await save(row);
+      toast("Enregistré");
+    } catch (e) { err.textContent = e.message; }
+    saveBtn.disabled = false;
+  } }, t._new ? (isFilm ? "Envoyer et créer le film" : "Créer la série") : "Enregistrer");
+
+  const delBtn = !t._new && h("button", { class: "danger", onclick: async () => {
+    const n = t.seasons.reduce((a, s) => a + s.episodes.length, 0);
+    if (!confirm(`Supprimer « ${t.name} »${n ? ` et ses ${n} épisodes` : ""} ? Les vidéos seront effacées de R2.`)) return;
+    const keys = [t.video_key, ...t.seasons.flatMap((s) => s.episodes.map((e) => e.video_key))];
+    const { error } = await sb.from("titles").delete().eq("id", t.id);
+    if (error) return fail(error);
+    r2Delete(keys);
+    titles = titles.filter((x) => x !== t);
+    toast("Supprimé");
+    renderList();
+  } }, "Supprimer");
+
+  const filmDrop = isFilm && dropZone("Glisse la vidéo ici ou clique pour choisir", pickFilmVideo, false);
+
+  $("main").replaceChildren(
+    h("div", { class: "row", style: { marginTop: "20px" } },
+      h("button", { class: "link", onclick: renderList }, "← Catalogue"),
+    ),
+    h("h2", {}, t._new ? (isFilm ? "Nouveau film" : "Nouvelle série") : t.name),
+    h("div", { class: "card" },
+      h("label", {}, "Nom"), f.name,
+      h("div", { class: "grid2" },
+        h("div", {}, h("label", {}, "Année"), f.year),
+        h("div", {}, h("label", {}, "Ordre d'affichage (petit = en premier)"), f.sort),
+      ),
+      h("label", {}, "Résumé"), f.synopsis,
+      h("label", {}, "Images"),
+      h("div", { class: "imgs" }, imgBox("poster"), imgBox("backdrop")),
+      h("label", { style: { display: "flex", alignItems: "center", gap: "8px", textTransform: "none", letterSpacing: 0, fontSize: "14px", color: "var(--text)" } },
+        f.published, "Visible dans l'app"),
+      isFilm && h("div", {}, h("label", {}, "Vidéo"), videoInfo, filmDrop),
+      h("div", { class: "row", style: { marginTop: "20px" } }, saveBtn, h("span", { class: "sp", style: { flex: 1 } }), delBtn),
+      err,
+    ),
+    !isFilm && !t._new && seasonsCard(t),
+  );
+  if (t._new) f.name.focus();
+}
+
+function dropZone(text, onFiles, multiple) {
+  const z = h("div", { class: "drop" }, text);
+  z.onclick = async () => onFiles(await pickFiles("video/*,.mkv", multiple));
+  z.ondragover = (e) => { e.preventDefault(); z.classList.add("over"); };
+  z.ondragleave = () => z.classList.remove("over");
+  z.ondrop = (e) => {
+    e.preventDefault(); z.classList.remove("over");
+    const files = [...e.dataTransfer.files].filter((f) => /^video\//.test(f.type) || /\.(mkv|mp4|m4v|mov)$/i.test(f.name));
+    if (files.length) onFiles(multiple ? files : files.slice(0, 1));
+  };
+  return z;
+}
+
+// ---------------------------------------------------------------- saisons & épisodes
+function seasonsCard(t) {
+  const card = h("div", { class: "card" });
+  const render = () => {
+    card.replaceChildren(
+      h("div", { class: "row" },
+        h("h3", { style: { flex: 1 } }, "Saisons & épisodes"),
+        h("button", { class: "ghost", onclick: addSeason }, "+ Saison"),
+      ),
+      t.seasons.length ? "" : h("p", { class: "muted", style: { marginTop: "10px" } }, "Ajoute une première saison."),
+      t.seasons.map((s) => seasonBlock(s)),
+    );
+  };
+
+  async function addSeason() {
+    const number = Math.max(0, ...t.seasons.map((s) => s.number)) + 1;
+    const { data, error } = await sb.from("seasons").insert({ title_id: t.id, number, name: `Saison ${number}` }).select("*").single();
+    if (error) return fail(error);
+    data.episodes = [];
+    t.seasons.push(data);
+    render();
+  }
+
+  function seasonBlock(s) {
+    const nameInput = h("input", { type: "text", value: s.name, style: { maxWidth: "240px" } });
+    nameInput.onchange = async () => {
+      const { error } = await sb.from("seasons").update({ name: nameInput.value.trim() }).eq("id", s.id);
+      error ? fail(error) : (s.name = nameInput.value.trim(), toast("Saison renommée"));
+    };
+    const tbody = h("tbody");
+    const renderEps = () => tbody.replaceChildren(...s.episodes.map((e) => episodeRow(s, e, renderEps)));
+    renderEps();
+
+    const addEpisodes = async (files) => {
+      files.sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }));
+      // Les envois partent l'un après l'autre ; chaque épisode est créé dès que sa vidéo est en ligne.
+      for (const file of files) {
+        const number = Math.max(0, ...s.episodes.map((e) => e.number)) + 1;
+        const key = `series/${slug(t.name)}-${t.id.slice(0, 8)}/s${pad(s.number)}/e${pad(number)}-${rand()}.${extOf(file)}`;
+        try {
+          const duration = await probeDuration(file);
+          // Réserve le numéro pendant l'envoi pour que les fichiers suivants prennent les numéros d'après.
+          const placeholder = { number, name: "…", _pending: true };
+          s.episodes.push(placeholder);
+          renderEps();
+          try {
+            await uploadToR2(file, key, `${t.name} · S${pad(s.number)}E${pad(number)}`);
+          } finally {
+            s.episodes = s.episodes.filter((x) => x !== placeholder);
+          }
+          const { data, error } = await sb.from("episodes").insert({
+            season_id: s.id, number, name: nameFromFile(file) || `Épisode ${number}`,
+            video_key: key, duration_s: duration, size_bytes: file.size,
+          }).select("*").single();
+          if (error) { r2Delete([key]); throw error; }
+          s.episodes.push(data);
+          s.episodes.sort((a, b) => a.number - b.number);
+          renderEps();
+        } catch (e) { fail(e); renderEps(); }
+      }
+    };
+
+    const del = h("button", { class: "link", title: "Supprimer la saison", onclick: async () => {
+      if (!confirm(`Supprimer ${s.name || "la saison " + s.number} et ses ${s.episodes.length} épisodes ?`)) return;
+      const { error } = await sb.from("seasons").delete().eq("id", s.id);
+      if (error) return fail(error);
+      r2Delete(s.episodes.map((e) => e.video_key));
+      t.seasons = t.seasons.filter((x) => x !== s);
+      render();
+    } }, "Supprimer");
+
+    return h("div", { class: "season" },
+      h("div", { class: "row" }, h("b", { class: "muted" }, `S${pad(s.number)}`), nameInput, h("span", { style: { flex: 1 } }), del),
+      h("table", {}, tbody),
+      h("div", { style: { marginTop: "10px" } },
+        dropZone("Glisse les vidéos des épisodes ici (plusieurs à la fois) ou clique pour choisir", addEpisodes, true)),
+    );
+  }
+
+  function episodeRow(s, e, rerender) {
+    if (e._pending) return h("tr", {}, h("td", { class: "n" }, e.number), h("td", { class: "muted", colspan: 3 }, "envoi en cours…"));
+    const name = h("input", { type: "text", value: e.name });
+    name.onchange = async () => {
+      const { error } = await sb.from("episodes").update({ name: name.value.trim() }).eq("id", e.id);
+      error ? fail(error) : (e.name = name.value.trim(), toast("Épisode renommé"));
+    };
+    const syn = h("button", { class: "link", title: "Résumé de l'épisode", onclick: async () => {
+      const v = prompt(`Résumé de l'épisode ${e.number}`, e.synopsis || "");
+      if (v == null) return;
+      const { error } = await sb.from("episodes").update({ synopsis: v.trim() }).eq("id", e.id);
+      error ? fail(error) : (e.synopsis = v.trim(), toast("Résumé enregistré"));
+    } }, e.synopsis ? "✎ résumé" : "+ résumé");
+    const del = h("button", { class: "link", title: "Supprimer", onclick: async () => {
+      if (!confirm(`Supprimer l'épisode ${e.number} « ${e.name} » ?`)) return;
+      const { error } = await sb.from("episodes").delete().eq("id", e.id);
+      if (error) return fail(error);
+      r2Delete([e.video_key]);
+      s.episodes = s.episodes.filter((x) => x !== e);
+      rerender();
+    } }, "✕");
+    return h("tr", {},
+      h("td", { class: "n" }, e.number),
+      h("td", {}, name),
+      h("td", { class: "meta" }, [fmtDur(e.duration_s), fmtSize(e.size_bytes)].filter(Boolean).join(" · ")),
+      h("td", { class: "meta" }, syn, del),
+    );
+  }
+
+  render();
+  return card;
+}
+
+sb.auth.onAuthStateChange((ev) => { if (ev === "SIGNED_OUT") showLogin(); });
+boot();
+</script>
+</body>
+</html>

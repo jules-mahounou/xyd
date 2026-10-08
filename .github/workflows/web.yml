@@ -1,0 +1,36 @@
+name: Site (xydhub.tech)
+
+on:
+  workflow_dispatch:
+  push:
+    paths: ["web/**", ".github/workflows/web.yml"]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    env:
+      SUPABASE_URL: ${{ vars.SUPABASE_URL || secrets.SUPABASE_URL }}
+      SUPABASE_ANON_KEY: ${{ vars.SUPABASE_ANON_KEY || secrets.SUPABASE_ANON_KEY }}
+      FTP_HOST: ${{ secrets.FTP_HOST }}
+      FTP_USER: ${{ secrets.FTP_USER }}
+      FTP_PASSWORD: ${{ secrets.FTP_PASSWORD }}
+      FTP_DIR: ${{ vars.FTP_DIR }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Injecter la config Supabase dans la page admin
+        run: |
+          [ -n "$SUPABASE_URL" ] && [ -n "$SUPABASE_ANON_KEY" ] || { echo "::error::SUPABASE_URL / SUPABASE_ANON_KEY manquants"; exit 1; }
+          sed -i "s#__SUPABASE_URL__#${SUPABASE_URL%/}#; s#__SUPABASE_ANON_KEY__#${SUPABASE_ANON_KEY}#" web/admin/index.html
+          grep -q "__SUPABASE_" web/admin/index.html && { echo "::error::placeholder non remplacé"; exit 1; } || true
+
+      - name: Upload FTP
+        run: |
+          [ -n "$FTP_HOST" ] || { echo "::error::Secrets FTP manquants"; exit 1; }
+          DIR="${FTP_DIR#/}"; DIR="${DIR%/}"; [ "$DIR" = "." ] && DIR=""
+          up() { curl -sS --fail --ftp-create-dirs --user "$FTP_USER:$FTP_PASSWORD" -T "$1" "ftp://$FTP_HOST/${DIR:+$DIR/}$2"; }
+          up web/index.html index.html
+          up web/.htaccess .htaccess
+          up web/logo.svg logo.svg
+          up web/admin/index.html admin/index.html
+          echo "Site : https://xydhub.tech  ·  Admin : https://xydhub.tech/admin/"

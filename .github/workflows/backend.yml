@@ -11,7 +11,7 @@ jobs:
     env:
       SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
       PROJECT_REF: ${{ vars.SUPABASE_PROJECT_REF || secrets.SUPABASE_PROJECT_REF }}
-      SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+      ADMIN_EMAIL: ${{ vars.ADMIN_EMAIL }}
     steps:
       - uses: actions/checkout@v4
       - uses: supabase/setup-cli@v1
@@ -24,13 +24,27 @@ jobs:
             echo "::error::Définis SUPABASE_ACCESS_TOKEN (secret) et SUPABASE_PROJECT_REF (variable)."; exit 1
           fi
 
+      # Les migrations sont idempotentes : on les rejoue toutes via l'API Management (pas besoin du mot de passe DB).
       - name: Migrations SQL
-        if: env.SUPABASE_DB_PASSWORD != ''
         run: |
-          supabase link --project-ref "$PROJECT_REF" -p "$SUPABASE_DB_PASSWORD"
-          supabase db push -p "$SUPABASE_DB_PASSWORD"
+          q() {
+            curl -sS --fail-with-body -X POST "https://api.supabase.com/v1/projects/$PROJECT_REF/database/query" \
+              -H "Authorization: Bearer $SUPABASE_ACCESS_TOKEN" -H "Content-Type: application/json" \
+              -d "$(jq -Rs '{query: .}')"
+          }
+          for f in supabase/migrations/*.sql; do
+            echo "→ $f"
+            q < "$f" > /dev/null || { echo "::error::Échec de $f (le jeton doit avoir l'accès base de données en écriture)"; exit 1; }
+          done
+          if [ -n "$ADMIN_EMAIL" ]; then
+            printf "insert into public.admins (user_id) select id from auth.users where lower(email) = lower('%s') on conflict do nothing; select count(*) as admins from public.admins;" \
+              "${ADMIN_EMAIL//\'/}" | q
+            echo
+          else
+            echo "::warning::Variable ADMIN_EMAIL absente : aucun admin déclaré."
+          fi
 
-      - name: Secrets R2 de l'Edge Function
+      - name: Secrets R2 des Edge Functions
         env:
           R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
           R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
@@ -42,5 +56,7 @@ jobs:
             R2_ACCOUNT_ID="$R2_ACCOUNT_ID" R2_ACCESS_KEY_ID="$R2_ACCESS_KEY_ID" \
             R2_SECRET_ACCESS_KEY="$R2_SECRET_ACCESS_KEY" R2_BUCKET="$R2_BUCKET"
 
-      - name: Déployer video-url
-        run: supabase functions deploy video-url --project-ref "$PROJECT_REF" --no-verify-jwt
+      - name: Déployer les Edge Functions
+        run: |
+          supabase functions deploy video-url --project-ref "$PROJECT_REF" --no-verify-jwt
+          supabase functions deploy admin-r2 --project-ref "$PROJECT_REF" --no-verify-jwt

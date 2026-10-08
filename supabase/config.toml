@@ -1,6 +1,9 @@
 # Config minimale pour `supabase functions deploy` (le reste se règle dans le dashboard).
 project_id = "xyd"
 
+# La vérification du JWT est faite dans les fonctions (compatible anciennes et nouvelles clés Supabase).
 [functions.video-url]
-# La vérification du JWT est faite dans la fonction (compatible anciennes et nouvelles clés Supabase).
+verify_jwt = false
+
+[functions.admin-r2]
 verify_jwt = false
