@@ -78,6 +78,15 @@
   tr.over-bottom td { box-shadow:inset 0 -2px 0 var(--grey); }
   button.arrow { background:none; color:var(--muted); padding:4px 6px; font-weight:500; }
   button.arrow:hover:not(:disabled) { color:var(--text); }
+  .chip { background:transparent; color:var(--grey); border:1px solid var(--line); border-radius:20px; padding:6px 12px; font-weight:500; }
+  .chip.on { background:var(--grey); color:#000; border-color:var(--grey); }
+  .cat { border-top:1px solid var(--line); padding:12px 0; }
+  .cat:first-of-type { border-top:0; }
+  .cat input[type=text] { max-width:260px; padding:8px 10px; }
+  .cat-titles { margin:10px 0 0 4px; }
+  .cat-titles .it { display:flex; align-items:center; gap:8px; padding:4px 0; font-size:14px; }
+  .cat-titles .it .rk { width:24px; color:var(--muted); font-weight:700; }
+  .check { display:inline-flex; align-items:center; gap:6px; font-size:13px; color:var(--grey); }
   [hidden] { display:none !important; }
 </style>
 </head>
@@ -129,6 +138,8 @@ const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
 const $ = (id) => document.getElementById(id);
 let titles = [];
+let categories = [];     // [{ id, name, sort, ranked, items: [title_id, …] }]
+let catsAvailable = true; // false tant que la migration « categories » n'est pas appliquée
 let uploading = 0;
 
 // ---------------------------------------------------------------- utilitaires
@@ -261,6 +272,15 @@ async function load() {
     for (const s of t.seasons) s.episodes.sort((a, b) => a.number - b.number);
   }
   titles = data;
+
+  const cats = await sb.from("categories")
+    .select("id, name, sort, ranked, title_categories(title_id, position)")
+    .order("sort").order("created_at");
+  catsAvailable = !cats.error;
+  categories = (cats.data || []).map((c) => ({
+    id: c.id, name: c.name, sort: c.sort, ranked: c.ranked,
+    items: (c.title_categories || []).sort((a, b) => a.position - b.position).map((x) => x.title_id),
+  }));
 }
 
 // ---------------------------------------------------------------- vues
@@ -303,6 +323,7 @@ function renderList() {
       h("button", { onclick: () => renderEditor(newTitle("serie")) }, "+ Série"),
       h("button", { onclick: () => renderEditor(newTitle("film")) }, "+ Film"),
     ),
+    catsAvailable ? categoriesCard() : "",
     titles.length ? h("div", { class: "titles", style: { marginTop: "20px" } },
       titles.map((t) => h("div", { class: "tile", onclick: () => renderEditor(t) },
         h("div", { class: "poster", style: t.poster_url ? { backgroundImage: `url("${t.poster_url}")` } : {} },
@@ -441,6 +462,10 @@ function renderEditor(t) {
       h("div", { class: "imgs" }, imgBox("poster"), imgBox("backdrop")),
       h("label", { style: { display: "flex", alignItems: "center", gap: "8px", textTransform: "none", letterSpacing: 0, fontSize: "14px", color: "var(--text)" } },
         f.published, "Visible dans l'app"),
+      catsAvailable && categories.length ? h("div", {},
+        h("label", {}, "Catégories"),
+        t._new ? h("p", { class: "muted" }, "Disponible après la création.") : titleCategoryChips(t),
+      ) : "",
       isFilm && h("div", {}, h("label", {}, "Vidéo"), videoInfo, filmDrop),
       h("div", { class: "row", style: { marginTop: "20px" } }, saveBtn, h("span", { class: "sp", style: { flex: 1 } }), delBtn),
       err,
@@ -461,6 +486,142 @@ function dropZone(text, onFiles, multiple) {
     if (files.length) onFiles(multiple ? files : files.slice(0, 1));
   };
   return z;
+}
+
+// ---------------------------------------------------------------- catégories
+const titleById = (id) => titles.find((t) => t.id === id);
+const moveIn = (arr, from, to) => { const a = arr.slice(); const [x] = a.splice(from, 1); a.splice(to, 0, x); return a; };
+
+async function setCategoryTitles(c, ids) {
+  const { error } = await sb.rpc("reorder_category_titles", { p_category: c.id, p_title_ids: ids });
+  if (error) throw error;
+  c.items = ids;
+}
+
+async function addToCategory(c, titleId) {
+  const { error } = await sb.from("title_categories").insert({ category_id: c.id, title_id: titleId, position: c.items.length + 1 });
+  if (error) throw error;
+  c.items = [...c.items, titleId];
+}
+
+async function removeFromCategory(c, titleId) {
+  const { error } = await sb.from("title_categories").delete().eq("category_id", c.id).eq("title_id", titleId);
+  if (error) throw error;
+  c.items = c.items.filter((x) => x !== titleId);
+}
+
+/** Pastilles cliquables dans la fiche d'un titre : ajoute / retire de chaque catégorie. */
+function titleCategoryChips(t) {
+  const box = h("div", { class: "row", style: { gap: "8px" } });
+  const render = () => box.replaceChildren(...categories.map((c) => {
+    const on = c.items.includes(t.id);
+    return h("button", { class: "chip" + (on ? " on" : ""), onclick: async () => {
+      try {
+        on ? await removeFromCategory(c, t.id) : await addToCategory(c, t.id);
+        render();
+      } catch (e) { fail(e); }
+    } }, (on ? "✓ " : "+ ") + c.name);
+  }));
+  render();
+  return box;
+}
+
+const openCats = new Set();
+
+/** Carte de gestion des catégories (accueil de l'admin). */
+function categoriesCard() {
+  const card = h("div", { class: "card" });
+  const render = () => {
+    card.replaceChildren(
+      h("div", { class: "row" },
+        h("h3", { style: { flex: 1 } }, "Catégories (rangées de l'accueil)"),
+        h("button", { class: "ghost", onclick: addCategory }, "+ Catégorie"),
+      ),
+      categories.length ? "" : h("p", { class: "muted", style: { marginTop: "10px" } }, "Aucune catégorie."),
+      h("div", { style: { marginTop: "8px" } }, ...categories.map((c, i) => catBlock(c, i))),
+    );
+  };
+
+  async function addCategory() {
+    const name = prompt("Nom de la catégorie (ex : Top 10, Anime, Nouveautés…)");
+    if (!name?.trim()) return;
+    const sort = Math.max(0, ...categories.map((c) => c.sort)) + 1;
+    const { data, error } = await sb.from("categories").insert({ name: name.trim(), sort }).select("*").single();
+    if (error) return fail(error);
+    categories.push({ id: data.id, name: data.name, sort: data.sort, ranked: data.ranked, items: [] });
+    openCats.add(data.id);
+    render();
+  }
+
+  async function reorder(list) {
+    const { error } = await sb.rpc("reorder_categories", { p_ids: list.map((c) => c.id) });
+    if (error) return fail(error);
+    list.forEach((c, i) => (c.sort = i + 1));
+    categories = list;
+    render();
+  }
+
+  function catBlock(c, i) {
+    const name = h("input", { type: "text", value: c.name });
+    name.onchange = async () => {
+      const v = name.value.trim();
+      if (!v) return (name.value = c.name);
+      const { error } = await sb.from("categories").update({ name: v }).eq("id", c.id);
+      error ? fail(error) : (c.name = v, toast("Catégorie renommée"));
+    };
+    const ranked = h("input", { type: "checkbox", checked: c.ranked });
+    ranked.onchange = async () => {
+      const { error } = await sb.from("categories").update({ ranked: ranked.checked }).eq("id", c.id);
+      error ? (fail(error), (ranked.checked = c.ranked)) : (c.ranked = ranked.checked, toast(c.ranked ? "Affichage classement activé" : "Affichage classement désactivé"));
+    };
+    const open = openCats.has(c.id);
+    const block = h("div", { class: "cat" },
+      h("div", { class: "row" },
+        name,
+        h("label", { class: "check", title: "Grands numéros 1, 2, 3… comme un Top 10" }, ranked, "Classement"),
+        h("span", { class: "muted", style: { fontSize: "13px" } }, `${c.items.length} titre${c.items.length > 1 ? "s" : ""}`),
+        h("span", { style: { flex: 1 } }),
+        h("button", { class: "arrow", title: "Monter", disabled: i === 0, onclick: () => reorder(moveIn(categories, i, i - 1)) }, "↑"),
+        h("button", { class: "arrow", title: "Descendre", disabled: i === categories.length - 1, onclick: () => reorder(moveIn(categories, i, i + 1)) }, "↓"),
+        h("button", { class: "link", onclick: () => { open ? openCats.delete(c.id) : openCats.add(c.id); render(); } }, open ? "Fermer" : "Gérer"),
+        h("button", { class: "link", title: "Supprimer la catégorie", onclick: async () => {
+          if (!confirm(`Supprimer la catégorie « ${c.name} » ? (les titres ne sont pas supprimés)`)) return;
+          const { error } = await sb.from("categories").delete().eq("id", c.id);
+          if (error) return fail(error);
+          categories = categories.filter((x) => x !== c);
+          render();
+        } }, "✕"),
+      ),
+      open ? catTitles(c) : "",
+    );
+    return block;
+  }
+
+  function catTitles(c) {
+    const others = titles.filter((t) => !c.items.includes(t.id));
+    const select = h("select", { style: { maxWidth: "320px" } },
+      h("option", { value: "" }, others.length ? "+ Ajouter un titre…" : "Tous les titres sont déjà dedans"),
+      ...others.map((t) => h("option", { value: t.id }, `${t.name} (${t.kind === "film" ? "film" : "série"})`)),
+    );
+    select.onchange = async () => {
+      if (!select.value) return;
+      try { await addToCategory(c, select.value); render(); } catch (e) { fail(e); }
+    };
+    const items = c.items.map(titleById).filter(Boolean);
+    return h("div", { class: "cat-titles" },
+      ...items.map((t, j) => h("div", { class: "it" },
+        h("span", { class: "rk" }, c.ranked ? `${j + 1}` : "•"),
+        h("span", { style: { flex: 1 } }, t.name, " ", h("span", { class: "muted", style: { fontSize: "12px" } }, t.kind === "film" ? "film" : "série")),
+        h("button", { class: "arrow", disabled: j === 0, onclick: async () => { try { await setCategoryTitles(c, moveIn(c.items, c.items.indexOf(t.id), c.items.indexOf(t.id) - 1)); render(); } catch (e) { fail(e); } } }, "↑"),
+        h("button", { class: "arrow", disabled: j === items.length - 1, onclick: async () => { try { await setCategoryTitles(c, moveIn(c.items, c.items.indexOf(t.id), c.items.indexOf(t.id) + 1)); render(); } catch (e) { fail(e); } } }, "↓"),
+        h("button", { class: "link", title: "Retirer de la catégorie", onclick: async () => { try { await removeFromCategory(c, t.id); render(); } catch (e) { fail(e); } } }, "✕"),
+      )),
+      h("div", { style: { marginTop: "8px" } }, select),
+    );
+  }
+
+  render();
+  return card;
 }
 
 // ---------------------------------------------------------------- saisons & épisodes

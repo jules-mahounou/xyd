@@ -26,6 +26,9 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.KeyboardArrowUp
+import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -345,12 +348,31 @@ private fun EpisodeRow(p: Playable, d: DownloadItem?, watched: Float, onPlay: (S
 
 // ---------------------------------------------------------------- Téléchargements
 
+/** Téléchargements groupés : un bloc par série/film, puis par saison. Filtre Tout / Séries / Films. */
 @Composable
 fun DownloadsSheet(onPlay: (String) -> Unit, onDismiss: () -> Unit) {
     val items by Downloads.items.collectAsStateWithLifecycle()
-    val list = remember(items) { items.values.sortedByDescending { it.addedAt } }
     val ctx = androidx.compose.ui.platform.LocalContext.current
     val used = remember(items) { Downloads.usedBytes() }
+    var filter by rememberSaveable { mutableIntStateOf(0) } // 0 = tout, 1 = séries, 2 = films
+    val expanded = remember { androidx.compose.runtime.mutableStateMapOf<String, Boolean>() }
+
+    // Groupes triés par activité la plus récente.
+    val groups = remember(items) {
+        items.values.groupBy { if (it.isFilm) it.mediaId else it.titleId }
+            .values.sortedByDescending { g -> g.maxOf { it.addedAt } }
+    }
+    val hasSeries = groups.any { !it.first().isFilm }
+    val hasFilms = groups.any { it.first().isFilm }
+    val shown = groups.filter {
+        when (filter) { 1 -> !it.first().isFilm; 2 -> it.first().isFilm; else -> true }
+    }
+
+    fun act(d: DownloadItem) = when (d.status) {
+        DlStatus.DONE -> onPlay(d.mediaId)
+        DlStatus.RUNNING, DlStatus.QUEUED -> Downloads.pause(d.mediaId)
+        else -> Downloads.enqueue(ctx, Repo.playable(d.mediaId) ?: Downloads.offlinePlayable(d))
+    }
 
     XSheet(onDismiss) {
         Column(Modifier.fillMaxWidth().navigationBarsPadding()) {
@@ -358,51 +380,145 @@ fun DownloadsSheet(onPlay: (String) -> Unit, onDismiss: () -> Unit) {
                 Text("Téléchargements", fontSize = 20.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
                 Text(fmtSize(used).ifBlank { "0 Mo" }, color = Xyd.Muted, fontSize = 13.sp)
             }
-            if (list.isEmpty()) {
+            if (hasSeries && hasFilms) {
+                Row(Modifier.padding(horizontal = 20.dp, vertical = 4.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    listOf("Tout", "Séries", "Films").forEachIndexed { i, label ->
+                        FilterChip(
+                            selected = filter == i, onClick = { filter = i }, label = { Text(label) },
+                            colors = FilterChipDefaults.filterChipColors(
+                                selectedContainerColor = Xyd.Grey, selectedLabelColor = Xyd.Black, labelColor = Xyd.Grey,
+                            ),
+                            border = FilterChipDefaults.filterChipBorder(enabled = true, selected = filter == i, borderColor = Xyd.Line),
+                        )
+                    }
+                }
+            }
+            if (items.isEmpty()) {
                 Text(
                     "Aucun téléchargement.\nOuvre une série ou un film et appuie sur Télécharger.",
                     color = Xyd.Muted, modifier = Modifier.padding(20.dp), lineHeight = 20.sp,
                 )
             }
             LazyColumn(Modifier.fillMaxWidth(), contentPadding = PaddingValues(bottom = 24.dp)) {
-                items(list, key = { it.mediaId }) { d ->
-                    Row(
-                        Modifier.fillMaxWidth().clickable {
-                            when (d.status) {
-                                DlStatus.DONE -> onPlay(d.mediaId)
-                                DlStatus.RUNNING, DlStatus.QUEUED -> Downloads.pause(d.mediaId)
-                                else -> Downloads.enqueue(ctx, Repo.playable(d.mediaId) ?: Downloads.offlinePlayable(d))
-                            }
-                        }.padding(start = 20.dp, end = 4.dp, top = 8.dp, bottom = 8.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        RemoteImage(d.backdrop ?: d.poster, Modifier.width(96.dp).aspectRatio(16f / 9f).clip(RoundedCornerShape(6.dp)))
-                        Column(Modifier.weight(1f).padding(start = 12.dp)) {
-                            Text(d.titleName, fontSize = 14.sp, fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                            if (!d.isFilm) Text(d.label, color = Xyd.Grey, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                            val status = when (d.status) {
-                                DlStatus.DONE -> fmtSize(d.sizeBytes)
-                                DlStatus.RUNNING -> "${(d.fraction * 100).toInt()} % · ${fmtSize(d.downloaded)} / ${fmtSize(d.sizeBytes)}"
-                                DlStatus.QUEUED -> "En attente"
-                                DlStatus.PAUSED -> "En pause · ${(d.fraction * 100).toInt()} % — toucher pour reprendre"
-                                DlStatus.FAILED -> "Échec : ${d.error ?: "erreur"} — toucher pour réessayer"
-                            }
-                            Text(status, color = if (d.status == DlStatus.FAILED) Xyd.Danger else Xyd.Muted, fontSize = 12.sp, maxLines = 2)
-                            if (d.status == DlStatus.RUNNING || d.status == DlStatus.PAUSED) {
-                                LinearProgressIndicator(
-                                    progress = { d.fraction },
-                                    modifier = Modifier.padding(top = 4.dp).fillMaxWidth().height(2.dp),
-                                    color = Xyd.Grey, trackColor = Xyd.Line, drawStopIndicator = {},
-                                )
-                            }
+                shown.forEach { group ->
+                    val first = group.first()
+                    val key = if (first.isFilm) first.mediaId else first.titleId
+                    if (first.isFilm) {
+                        item(key = key) { FilmDownloadRow(first, onClick = { act(first) }) }
+                    } else {
+                        val active = group.any { it.status == DlStatus.RUNNING || it.status == DlStatus.QUEUED }
+                        val open = expanded[key] ?: (active || shown.size == 1)
+                        item(key = key) {
+                            SeriesDownloadHeader(group, open, onToggle = { expanded[key] = !open })
                         }
-                        IconButton(onClick = { Downloads.remove(d.mediaId) }) {
-                            Icon(Icons.Filled.Delete, "Supprimer", tint = Xyd.Muted)
+                        if (open) {
+                            group.groupBy { it.seasonNumber }.toSortedMap().forEach { (season, eps) ->
+                                item(key = "$key-s$season") {
+                                    Text(
+                                        "SAISON $season", color = Xyd.Muted, fontSize = 11.sp, letterSpacing = 1.sp,
+                                        fontWeight = FontWeight.SemiBold,
+                                        modifier = Modifier.padding(start = 36.dp, top = 10.dp, bottom = 2.dp),
+                                    )
+                                }
+                                eps.sortedBy { it.episodeNumber }.forEach { d ->
+                                    item(key = d.mediaId) { EpisodeDownloadRow(d, onClick = { act(d) }) }
+                                }
+                            }
                         }
                     }
                 }
             }
         }
+    }
+}
+
+private fun statusText(d: DownloadItem): String = when (d.status) {
+    DlStatus.DONE -> fmtSize(d.sizeBytes)
+    DlStatus.RUNNING -> "${(d.fraction * 100).toInt()} % · ${fmtSize(d.downloaded)} / ${fmtSize(d.sizeBytes)}"
+    DlStatus.QUEUED -> "En attente"
+    DlStatus.PAUSED -> "En pause · ${(d.fraction * 100).toInt()} %"
+    DlStatus.FAILED -> "Échec : ${d.error ?: "erreur"}"
+}
+
+@Composable
+private fun DownloadProgress(d: DownloadItem) {
+    if (d.status == DlStatus.RUNNING || d.status == DlStatus.PAUSED) {
+        LinearProgressIndicator(
+            progress = { d.fraction },
+            modifier = Modifier.padding(top = 4.dp).fillMaxWidth().height(2.dp),
+            color = if (d.status == DlStatus.RUNNING) Xyd.Grey else Xyd.Muted, trackColor = Xyd.Line, drawStopIndicator = {},
+        )
+    }
+}
+
+@Composable
+private fun FilmDownloadRow(d: DownloadItem, onClick: () -> Unit) {
+    Row(
+        Modifier.fillMaxWidth().clickable(onClick = onClick).padding(start = 20.dp, end = 4.dp, top = 8.dp, bottom = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        RemoteImage(d.backdrop ?: d.poster, Modifier.width(96.dp).aspectRatio(16f / 9f).clip(RoundedCornerShape(6.dp)))
+        Column(Modifier.weight(1f).padding(start = 12.dp)) {
+            Text(d.titleName, fontSize = 15.sp, fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text("Film · " + statusText(d), color = if (d.status == DlStatus.FAILED) Xyd.Danger else Xyd.Muted, fontSize = 12.sp, maxLines = 2)
+            DownloadProgress(d)
+        }
+        IconButton(onClick = { Downloads.remove(d.mediaId) }) { Icon(Icons.Filled.Delete, "Supprimer", tint = Xyd.Muted) }
+    }
+}
+
+@Composable
+private fun SeriesDownloadHeader(group: List<DownloadItem>, open: Boolean, onToggle: () -> Unit) {
+    val first = group.first()
+    val done = group.count { it.status == DlStatus.DONE }
+    val running = group.filter { it.status == DlStatus.RUNNING }
+    val seasons = group.map { it.seasonNumber }.distinct().size
+    val size = group.filter { it.status == DlStatus.DONE }.sumOf { it.sizeBytes }
+    var confirm by remember { mutableStateOf(false) }
+    Row(
+        Modifier.fillMaxWidth().clickable(onClick = onToggle).padding(start = 20.dp, end = 4.dp, top = 10.dp, bottom = 6.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        RemoteImage(first.backdrop ?: first.poster, Modifier.width(96.dp).aspectRatio(16f / 9f).clip(RoundedCornerShape(6.dp)))
+        Column(Modifier.weight(1f).padding(start = 12.dp)) {
+            Text(first.titleName, fontSize = 15.sp, fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            val parts = listOfNotNull(
+                "${group.size} épisode${if (group.size > 1) "s" else ""}",
+                if (seasons > 1) "$seasons saisons" else null,
+                fmtSize(size).ifBlank { null },
+                if (running.isNotEmpty()) "${running.size} en cours" else if (done < group.size) "${group.size - done} en attente" else null,
+            )
+            Text(parts.joinToString(" · "), color = Xyd.Muted, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        }
+        if (confirm) {
+            TextButton(onClick = { confirm = false }) { Text("Non", color = Xyd.Muted) }
+            TextButton(onClick = { group.forEach { Downloads.remove(it.mediaId) } }) { Text("Tout suppr.", color = Xyd.Danger) }
+        } else {
+            IconButton(onClick = { confirm = true }) { Icon(Icons.Filled.Delete, "Supprimer la série", tint = Xyd.Muted) }
+            Icon(
+                if (open) Icons.Filled.KeyboardArrowUp else Icons.Filled.KeyboardArrowDown, null,
+                tint = Xyd.Grey, modifier = Modifier.padding(end = 12.dp),
+            )
+        }
+    }
+}
+
+@Composable
+private fun EpisodeDownloadRow(d: DownloadItem, onClick: () -> Unit) {
+    Row(
+        Modifier.fillMaxWidth().clickable(onClick = onClick).padding(start = 36.dp, end = 4.dp, top = 4.dp, bottom = 4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text("${d.episodeNumber}", color = Xyd.Muted, fontWeight = FontWeight.SemiBold, modifier = Modifier.width(28.dp))
+        Column(Modifier.weight(1f)) {
+            Text(d.episodeName.ifBlank { "Épisode ${d.episodeNumber}" }, fontSize = 14.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(statusText(d), color = if (d.status == DlStatus.FAILED) Xyd.Danger else Xyd.Muted, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            DownloadProgress(d)
+        }
+        if (d.status == DlStatus.DONE) {
+            Icon(Icons.Filled.PlayArrow, "Lire", tint = Xyd.Grey, modifier = Modifier.padding(horizontal = 4.dp))
+        }
+        IconButton(onClick = { Downloads.remove(d.mediaId) }) { Icon(Icons.Filled.Close, "Supprimer", tint = Xyd.Muted, modifier = Modifier.size(18.dp)) }
     }
 }
 

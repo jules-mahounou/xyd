@@ -122,6 +122,10 @@ object Supabase {
             "&published=eq.true&order=sort.asc,created_at.desc"
     )
 
+    suspend fun fetchCategories(): String = authedOk(
+        "/rest/v1/categories?select=id,name,ranked,title_categories(title_id,position)&order=sort.asc,created_at.asc"
+    )
+
     suspend fun fetchProgress(): String =
         authedOk("/rest/v1/watch_progress?select=media_id,position_ms,duration_ms,updated_at")
 

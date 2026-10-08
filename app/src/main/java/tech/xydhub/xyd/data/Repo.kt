@@ -31,6 +31,8 @@ object Repo {
 
     private val _catalog = MutableStateFlow<List<Title>>(emptyList())
     val catalog: StateFlow<List<Title>> = _catalog
+    private val _categories = MutableStateFlow<List<Category>>(emptyList())
+    val categories: StateFlow<List<Category>> = _categories
     val loading = MutableStateFlow(false)
     val error = MutableStateFlow<String?>(null)
 
@@ -45,6 +47,7 @@ object Repo {
     val update = MutableStateFlow<AppVersion?>(null)
 
     private val catalogFile get() = File(ctx.filesDir, "catalog.json")
+    private val categoriesFile get() = File(ctx.filesDir, "categories.json")
 
     fun init(context: Context) {
         ctx = context.applicationContext
@@ -54,6 +57,7 @@ object Repo {
             .getOrDefault(OrientationMode.AUTO)
         loadLocalProgress()
         runCatching { if (catalogFile.exists()) _catalog.value = Parse.catalog(catalogFile.readText()) }
+        runCatching { if (categoriesFile.exists()) _categories.value = Parse.categories(categoriesFile.readText()) }
         Downloads.init(ctx)
     }
 
@@ -111,6 +115,12 @@ object Repo {
                 _catalog.value = Parse.catalog(json)
                 error.value = null
                 withContext(Dispatchers.IO) { catalogFile.writeText(json) }
+                // Catégories : facultatives (table absente = simplement pas de rangées personnalisées).
+                runCatching {
+                    val cj = Supabase.fetchCategories()
+                    _categories.value = Parse.categories(cj)
+                    withContext(Dispatchers.IO) { categoriesFile.writeText(cj) }
+                }
                 syncProgress()
             } catch (e: Exception) {
                 error.value = if (_catalog.value.isEmpty()) (e.message ?: "Erreur réseau") else null

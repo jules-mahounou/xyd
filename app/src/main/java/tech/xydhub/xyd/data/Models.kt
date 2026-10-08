@@ -27,6 +27,9 @@ data class Title(
     val seasons: List<Season>,
 )
 
+/** Rangée de l'accueil définie dans l'admin (Top 10, Anime…). `titleIds` déjà triés. */
+data class Category(val id: String, val name: String, val ranked: Boolean, val titleIds: List<String>)
+
 /** Un élément lisible : un film, ou un épisode d'une série. `mediaId` = id du film ou de l'épisode. */
 data class Playable(val title: Title, val season: Season?, val episode: Episode?) {
     val mediaId: String get() = episode?.id ?: title.id
@@ -60,6 +63,22 @@ data class AppVersion(
 )
 
 object Parse {
+    fun categories(json: String): List<Category> {
+        val arr = JSONArray(json)
+        return (0 until arr.length()).map { i ->
+            val o = arr.getJSONObject(i)
+            val links = o.optJSONArray("title_categories") ?: JSONArray()
+            Category(
+                id = o.getString("id"),
+                name = o.optString("name"),
+                ranked = o.optBoolean("ranked"),
+                titleIds = (0 until links.length()).map { links.getJSONObject(it) }
+                    .sortedBy { it.optInt("position") }
+                    .map { it.getString("title_id") },
+            )
+        }
+    }
+
     private fun JSONObject.str(k: String) = if (isNull(k)) "" else optString(k)
     private fun JSONObject.strOrNull(k: String) = if (isNull(k)) null else optString(k).ifBlank { null }
 

@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
@@ -21,6 +22,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -72,6 +74,7 @@ fun HomeScreen(onPlay: (String) -> Unit) {
 
     val session by Repo.session.collectAsStateWithLifecycle()
     val catalog by Repo.catalog.collectAsStateWithLifecycle()
+    val categories by Repo.categories.collectAsStateWithLifecycle()
     val progress by Repo.progress.collectAsStateWithLifecycle()
     val loading by Repo.loading.collectAsStateWithLifecycle()
     val error by Repo.error.collectAsStateWithLifecycle()
@@ -84,6 +87,11 @@ fun HomeScreen(onPlay: (String) -> Unit) {
     val series = remember(catalog) { catalog.filter { !it.isFilm } }
     val films = remember(catalog) { catalog.filter { it.isFilm } }
     val resume = remember(catalog, progress) { Repo.continueWatching(catalog, progress) }
+    // Rangées de l'admin : titres résolus dans l'ordre choisi, catégories vides masquées.
+    val rows = remember(catalog, categories) {
+        val byId = catalog.associateBy { it.id }
+        categories.map { c -> c to c.titleIds.mapNotNull { byId[it] } }.filter { it.second.isNotEmpty() }
+    }
     val active = downloads.values.count { it.status == DlStatus.RUNNING || it.status == DlStatus.QUEUED }
 
     PullToRefreshBox(isRefreshing = loading, onRefresh = { Repo.refresh() }, modifier = Modifier.fillMaxSize()) {
@@ -119,6 +127,13 @@ fun HomeScreen(onPlay: (String) -> Unit) {
                             }
                         }
                     }
+                }
+            }
+
+            rows.forEach { (c, list) ->
+                item(key = "cat-" + c.id) { SectionTitle(c.name) }
+                item(key = "row-" + c.id) {
+                    if (c.ranked) RankedRow(list) { sheet = it.id } else PosterRow(list) { sheet = it.id }
                 }
             }
 
@@ -227,6 +242,31 @@ private fun ResumeCard(p: Playable, prog: Progress, onClick: () -> Unit) {
         )
         if (p.episode != null) {
             Text(p.label, color = Xyd.Muted, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        }
+    }
+}
+
+/** Rangée « classement » : grand numéro à gauche de l'affiche (Top 10). */
+@Composable
+private fun RankedRow(titles: List<Title>, onClick: (Title) -> Unit) {
+    LazyRow(contentPadding = PaddingValues(horizontal = 12.dp), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+        itemsIndexed(titles, key = { _, t -> t.id }) { i, t ->
+            Box(Modifier.width(if (i + 1 >= 10) 186.dp else 160.dp).clickable { onClick(t) }) {
+                Text(
+                    "${i + 1}",
+                    Modifier.align(Alignment.BottomStart).offset(y = 18.dp),
+                    color = Color(0xFF3A3A3A), fontSize = 112.sp, fontWeight = FontWeight.Black,
+                    letterSpacing = (-6).sp, maxLines = 1, softWrap = false,
+                )
+                Box(
+                    Modifier.align(Alignment.CenterEnd).width(110.dp).aspectRatio(2f / 3f).clip(RoundedCornerShape(10.dp))
+                ) {
+                    RemoteImage(t.poster ?: t.backdrop, Modifier.fillMaxSize())
+                    if (t.poster == null && t.backdrop == null) {
+                        Text(t.name, Modifier.align(Alignment.Center).padding(8.dp), color = Xyd.Grey, fontWeight = FontWeight.SemiBold)
+                    }
+                }
+            }
         }
     }
 }
