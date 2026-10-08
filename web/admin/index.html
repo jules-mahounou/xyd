@@ -72,6 +72,12 @@
   .up.done .bar i { background:var(--ok); }
   .up.fail .bar i { background:var(--danger); }
   .toast { position:fixed; top:72px; left:50%; transform:translateX(-50%); background:var(--card2); border:1px solid var(--line); padding:10px 16px; border-radius:10px; z-index:20; font-size:14px; }
+  .handle { cursor:grab; color:var(--muted); user-select:none; width:24px; text-align:center; font-size:16px; }
+  tr.dragging { opacity:.4; }
+  tr.over-top td { box-shadow:inset 0 2px 0 var(--grey); }
+  tr.over-bottom td { box-shadow:inset 0 -2px 0 var(--grey); }
+  button.arrow { background:none; color:var(--muted); padding:4px 6px; font-weight:500; }
+  button.arrow:hover:not(:disabled) { color:var(--text); }
   [hidden] { display:none !important; }
 </style>
 </head>
@@ -467,9 +473,31 @@ function seasonsCard(t) {
         h("button", { class: "ghost", onclick: addSeason }, "+ Saison"),
       ),
       t.seasons.length ? "" : h("p", { class: "muted", style: { marginTop: "10px" } }, "Ajoute une première saison."),
-      ...t.seasons.map((s) => seasonBlock(s)),
+      ...t.seasons.map((s, si) => seasonBlock(s, si)),
     );
   };
+
+  // Renumérotation atomique côté base (contraintes d'unicité différées).
+  async function reorderEpisodes(s, list) {
+    if (uploading) return toast("Attends la fin des envois pour réordonner");
+    const { error } = await sb.rpc("reorder_episodes", { p_season: s.id, p_ids: list.map((e) => e.id) });
+    if (error) return fail(error);
+    list.forEach((e, i) => (e.number = i + 1));
+    s.episodes = list;
+    render();
+  }
+
+  async function reorderSeasons(list) {
+    if (uploading) return toast("Attends la fin des envois pour réordonner");
+    const { error } = await sb.rpc("reorder_seasons", { p_title: t.id, p_ids: list.map((x) => x.id) });
+    if (error) return fail(error);
+    list.forEach((x, i) => (x.number = i + 1));
+    t.seasons = list;
+    render();
+  }
+
+  const moved = (arr, from, to) => { const a = arr.slice(); const [x] = a.splice(from, 1); a.splice(to, 0, x); return a; };
+  let dragged = null; // { season, episode }
 
   let adding = false;
   async function addSeason(ev) {
@@ -485,7 +513,7 @@ function seasonsCard(t) {
     render();
   }
 
-  function seasonBlock(s) {
+  function seasonBlock(s, si) {
     const nameInput = h("input", { type: "text", value: s.name, style: { maxWidth: "240px" } });
     nameInput.onchange = async () => {
       const { error } = await sb.from("seasons").update({ name: nameInput.value.trim() }).eq("id", s.id);
@@ -534,7 +562,12 @@ function seasonsCard(t) {
     } }, "Supprimer");
 
     return h("div", { class: "season" },
-      h("div", { class: "row" }, h("b", { class: "muted" }, `S${pad(s.number)}`), nameInput, h("span", { style: { flex: 1 } }), del),
+      h("div", { class: "row" }, h("b", { class: "muted" }, `S${pad(s.number)}`), nameInput, h("span", { style: { flex: 1 } }),
+        h("button", { class: "arrow", title: "Monter la saison", disabled: si === 0,
+          onclick: () => reorderSeasons(moved(t.seasons, si, si - 1)) }, "↑"),
+        h("button", { class: "arrow", title: "Descendre la saison", disabled: si === t.seasons.length - 1,
+          onclick: () => reorderSeasons(moved(t.seasons, si, si + 1)) }, "↓"),
+        del),
       h("table", {}, tbody),
       h("div", { style: { marginTop: "10px" } },
         dropZone("Glisse les vidéos des épisodes ici (plusieurs à la fois) ou clique pour choisir", addEpisodes, true)),
@@ -542,7 +575,7 @@ function seasonsCard(t) {
   }
 
   function episodeRow(s, e, rerender) {
-    if (e._pending) return h("tr", {}, h("td", { class: "n" }, e.number), h("td", { class: "muted", colspan: 3 }, "envoi en cours…"));
+    if (e._pending) return h("tr", {}, h("td", {}), h("td", { class: "n" }, e.number), h("td", { class: "muted", colspan: 3 }, "envoi en cours…"));
     const name = h("input", { type: "text", value: e.name });
     name.onchange = async () => {
       const { error } = await sb.from("episodes").update({ name: name.value.trim() }).eq("id", e.id);
@@ -562,12 +595,45 @@ function seasonsCard(t) {
       s.episodes = s.episodes.filter((x) => x !== e);
       rerender();
     } }, "✕");
-    return h("tr", {},
+    const i = s.episodes.indexOf(e);
+    const last = s.episodes.length - 1;
+    const up = h("button", { class: "arrow", title: "Monter", disabled: i === 0,
+      onclick: () => reorderEpisodes(s, moved(s.episodes, i, i - 1)) }, "↑");
+    const down = h("button", { class: "arrow", title: "Descendre", disabled: i === last,
+      onclick: () => reorderEpisodes(s, moved(s.episodes, i, i + 1)) }, "↓");
+    const handle = h("td", { class: "handle", title: "Glisser pour déplacer" }, "⋮⋮");
+
+    const tr = h("tr", {},
+      handle,
       h("td", { class: "n" }, e.number),
       h("td", {}, name),
       h("td", { class: "meta" }, [fmtDur(e.duration_s), fmtSize(e.size_bytes)].filter(Boolean).join(" · ")),
-      h("td", { class: "meta" }, syn, del),
+      h("td", { class: "meta" }, up, down, syn, del),
     );
+
+    // Glisser-déposer : on ne rend la ligne déplaçable que depuis la poignée (le champ nom reste éditable).
+    handle.onmousedown = () => (tr.draggable = true);
+    tr.onmouseup = () => (tr.draggable = false);
+    tr.ondragstart = (ev) => { dragged = { season: s, episode: e }; tr.classList.add("dragging"); ev.dataTransfer.effectAllowed = "move"; ev.dataTransfer.setData("text/plain", e.id); };
+    tr.ondragend = () => { tr.draggable = false; tr.classList.remove("dragging"); dragged = null; };
+    const side = (ev) => { const r = tr.getBoundingClientRect(); return ev.clientY < r.top + r.height / 2 ? "top" : "bottom"; };
+    tr.ondragover = (ev) => {
+      if (!dragged || dragged.season !== s || dragged.episode === e) return;
+      ev.preventDefault();
+      tr.classList.toggle("over-top", side(ev) === "top");
+      tr.classList.toggle("over-bottom", side(ev) === "bottom");
+    };
+    tr.ondragleave = () => tr.classList.remove("over-top", "over-bottom");
+    tr.ondrop = (ev) => {
+      ev.preventDefault();
+      tr.classList.remove("over-top", "over-bottom");
+      if (!dragged || dragged.season !== s || dragged.episode === e) return;
+      const from = s.episodes.indexOf(dragged.episode);
+      let to = s.episodes.indexOf(e) + (side(ev) === "bottom" ? 1 : 0);
+      if (from < to) to--;
+      if (from !== to) reorderEpisodes(s, moved(s.episodes, from, to));
+    };
+    return tr;
   }
 
   render();
