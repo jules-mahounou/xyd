@@ -7,9 +7,9 @@ import androidx.activity.SystemBarStyle
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
-import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.material3.Surface
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -44,7 +44,9 @@ class MainActivity : ComponentActivity() {
         setContent {
             XydTheme {
                 var playing by rememberSaveable { mutableStateOf<String?>(null) }
-                Box(Modifier.fillMaxSize().background(Xyd.Black)) {
+                // Surface : couleur de texte par défaut = blanc partout (sinon noir sur noir hors des sheets).
+                Surface(Modifier.fillMaxSize(), color = Xyd.Black, contentColor = Xyd.Text) {
+                Box(Modifier.fillMaxSize()) {
                     val current = playing
                     if (current == null) {
                         HomeScreen(onPlay = { playing = it })
@@ -57,6 +59,7 @@ class MainActivity : ComponentActivity() {
                         )
                     }
                     UpdateGate()
+                }
                 }
             }
         }
