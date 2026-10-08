@@ -439,7 +439,7 @@ function renderEditor(t) {
       h("div", { class: "row", style: { marginTop: "20px" } }, saveBtn, h("span", { class: "sp", style: { flex: 1 } }), delBtn),
       err,
     ),
-    !isFilm && !t._new && seasonsCard(t),
+    !isFilm && !t._new ? seasonsCard(t) : "",
   );
   if (t._new) f.name.focus();
 }
@@ -467,14 +467,19 @@ function seasonsCard(t) {
         h("button", { class: "ghost", onclick: addSeason }, "+ Saison"),
       ),
       t.seasons.length ? "" : h("p", { class: "muted", style: { marginTop: "10px" } }, "Ajoute une première saison."),
-      t.seasons.map((s) => seasonBlock(s)),
+      ...t.seasons.map((s) => seasonBlock(s)),
     );
   };
 
-  async function addSeason() {
+  let adding = false;
+  async function addSeason(ev) {
+    if (adding) return;
+    adding = true;
+    if (ev?.currentTarget) ev.currentTarget.disabled = true;
     const number = Math.max(0, ...t.seasons.map((s) => s.number)) + 1;
     const { data, error } = await sb.from("seasons").insert({ title_id: t.id, number, name: `Saison ${number}` }).select("*").single();
-    if (error) return fail(error);
+    adding = false;
+    if (error) { render(); return fail(error); }
     data.episodes = [];
     t.seasons.push(data);
     render();
