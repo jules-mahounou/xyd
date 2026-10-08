@@ -231,7 +231,7 @@ async function uploadImage(file, titleId, kind) {
   c.getContext("2d").drawImage(bmp, 0, 0, c.width, c.height);
   const blob = await new Promise((r) => c.toBlob(r, "image/jpeg", 0.85));
   const path = `${titleId}/${kind}-${Date.now()}.jpg`;
-  const { error } = await sb.storage.from("posters").upload(path, blob, { contentType: "image/jpeg", upsert: true });
+  const { error } = await sb.storage.from("posters").upload(path, blob, { contentType: "image/jpeg", upsert: false });
   if (error) throw error;
   return sb.storage.from("posters").getPublicUrl(path).data.publicUrl;
 }

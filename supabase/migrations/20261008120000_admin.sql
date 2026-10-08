@@ -50,6 +50,10 @@ insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_typ
 values ('posters', 'posters', true, 5242880, array['image/jpeg', 'image/png', 'image/webp'])
 on conflict (id) do update set public = true;
 
+-- Lecture via l'API (nécessaire pour upsert / list) ; l'affichage public passe par l'URL publique.
+drop policy if exists "posters admin select" on storage.objects;
+create policy "posters admin select" on storage.objects for select to authenticated
+  using (bucket_id = 'posters' and (select public.is_admin()));
 drop policy if exists "posters admin insert" on storage.objects;
 create policy "posters admin insert" on storage.objects for insert to authenticated
   with check (bucket_id = 'posters' and (select public.is_admin()));
