@@ -7,7 +7,7 @@ Application Android privée (Kotlin + Jetpack Compose + Supabase + Cloudflare R2
 - **Reprise de lecture** synchronisée (local + Supabase).
 - **Orientation** au choix (Auto / Portrait / Paysage) ; en portrait la vidéo est en haut.
 - **Mise à jour forcée** : l'app se bloque tant que la nouvelle version n'est pas installée.
-- **APK < 10 Mo** garanti par la CI (le build échoue au-delà).
+- **APK ≈ 1,4 Mo** (limite de 10 Mo vérifiée par la CI, le build échoue au-delà).
 
 ## Arborescence
 

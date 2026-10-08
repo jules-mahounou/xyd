@@ -101,11 +101,12 @@ fun DownloadButton(p: Playable, onPlay: (String) -> Unit, download: (Playable) -
             ) { Icon(Icons.Filled.PlayArrow, "Lire", tint = Xyd.Black) }
 
             DlStatus.RUNNING, DlStatus.QUEUED -> Box(contentAlignment = Alignment.Center) {
-                if (d.status == DlStatus.QUEUED || d.fraction == 0f) {
+                if (d!!.status == DlStatus.QUEUED || d.fraction == 0f) {
                     CircularProgressIndicator(Modifier.size(30.dp), strokeWidth = 2.5.dp, color = Xyd.Grey, trackColor = Xyd.Line)
                 } else {
+                    val f = d.fraction
                     CircularProgressIndicator(
-                        progress = { d.fraction }, modifier = Modifier.size(30.dp), strokeWidth = 2.5.dp,
+                        progress = { f }, modifier = Modifier.size(30.dp), strokeWidth = 2.5.dp,
                         color = Xyd.Grey, trackColor = Xyd.Line,
                     )
                 }
@@ -114,8 +115,9 @@ fun DownloadButton(p: Playable, onPlay: (String) -> Unit, download: (Playable) -
 
             DlStatus.FAILED -> Icon(Icons.Filled.Refresh, "Réessayer", tint = Xyd.Danger)
             DlStatus.PAUSED -> Box(contentAlignment = Alignment.Center) {
+                val f = d!!.fraction
                 CircularProgressIndicator(
-                    progress = { d.fraction }, modifier = Modifier.size(30.dp), strokeWidth = 2.5.dp,
+                    progress = { f }, modifier = Modifier.size(30.dp), strokeWidth = 2.5.dp,
                     color = Xyd.Muted, trackColor = Xyd.Line,
                 )
                 Icon(XIcons.Download, "Reprendre", Modifier.size(16.dp), tint = Xyd.Grey)

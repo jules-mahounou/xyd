@@ -29,9 +29,11 @@ android {
 
         buildConfigField("String", "SUPABASE_URL", "\"${cfg("SUPABASE_URL", "supabase.url").trimEnd('/')}\"")
         buildConfigField("String", "SUPABASE_KEY", "\"${cfg("SUPABASE_ANON_KEY", "supabase.anonKey")}\"")
+    }
 
-        // Seul le français est embarqué : on retire les traductions de toutes les libs.
-        resourceConfigurations += listOf("fr")
+    // Seul le français est embarqué : on retire les traductions de toutes les libs.
+    androidResources {
+        localeFilters += listOf("fr")
     }
 
     signingConfigs {

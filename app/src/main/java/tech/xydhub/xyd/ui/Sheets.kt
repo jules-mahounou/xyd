@@ -281,7 +281,7 @@ fun TitleSheet(t: Title, onPlay: (String) -> Unit, download: (Playable) -> Unit,
 private fun MainAction(p: Playable, d: DownloadItem?, posMs: Long, onPlay: (String) -> Unit, download: (Playable) -> Unit) {
     val label = when (d?.status) {
         DlStatus.DONE -> (if (posMs > 5_000) "Reprendre" else "Lire") + if (p.episode != null) " · ${p.shortLabel}" else ""
-        DlStatus.RUNNING -> "Téléchargement… ${(d.fraction * 100).toInt()} %"
+        DlStatus.RUNNING -> "Téléchargement… ${(d!!.fraction * 100).toInt()} %"
         DlStatus.QUEUED -> "En attente…"
         DlStatus.PAUSED -> "Reprendre le téléchargement"
         DlStatus.FAILED -> "Réessayer le téléchargement"
@@ -299,14 +299,14 @@ private fun MainAction(p: Playable, d: DownloadItem?, posMs: Long, onPlay: (Stri
             Spacer(Modifier.width(8.dp))
             Text(label, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
-        if (d?.status == DlStatus.RUNNING) {
+        if (d != null && d.status == DlStatus.RUNNING) {
             LinearProgressIndicator(
                 progress = { d.fraction },
                 modifier = Modifier.fillMaxWidth().padding(top = 8.dp).height(3.dp),
                 color = Xyd.Grey, trackColor = Xyd.Line, drawStopIndicator = {},
             )
         }
-        d?.error?.takeIf { d.status == DlStatus.FAILED }?.let {
+        d?.takeIf { it.status == DlStatus.FAILED }?.error?.let {
             Text(it, color = Xyd.Danger, fontSize = 12.sp, modifier = Modifier.padding(top = 6.dp))
         }
     }
@@ -324,10 +324,10 @@ private fun EpisodeRow(p: Playable, d: DownloadItem?, watched: Float, onPlay: (S
         Column(Modifier.weight(1f)) {
             Text(e.name.ifBlank { "Épisode ${e.number}" }, fontSize = 15.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
             val sub = when (d?.status) {
-                DlStatus.RUNNING -> "${(d.fraction * 100).toInt()} % · ${fmtSize(d.downloaded)} / ${fmtSize(d.sizeBytes)}"
+                DlStatus.RUNNING -> "${(d!!.fraction * 100).toInt()} % · ${fmtSize(d.downloaded)} / ${fmtSize(d.sizeBytes)}"
                 DlStatus.QUEUED -> "En attente"
-                DlStatus.PAUSED -> "En pause · ${(d.fraction * 100).toInt()} %"
-                DlStatus.FAILED -> d.error ?: "Échec"
+                DlStatus.PAUSED -> "En pause · ${(d!!.fraction * 100).toInt()} %"
+                DlStatus.FAILED -> d!!.error ?: "Échec"
                 else -> listOf(fmtDuration(e.durationS), fmtSize(e.sizeBytes)).filter { it.isNotBlank() }.joinToString(" · ")
             }
             Text(sub, color = if (d?.status == DlStatus.FAILED) Xyd.Danger else Xyd.Muted, fontSize = 12.sp, maxLines = 1)
