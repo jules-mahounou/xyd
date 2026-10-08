@@ -1,0 +1,155 @@
+name: Android
+
+on:
+  push:
+    branches: ["**"]
+    tags: ["v*"]
+    paths-ignore: ["supabase/**", "**.md"]
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: "Publier (FTP xydhub.tech + app_versions Supabase + Release GitHub)"
+        type: boolean
+        default: false
+      force:
+        description: "Mise à jour obligatoire (bloque les anciennes versions)"
+        type: boolean
+        default: true
+      changelog:
+        description: "Notes de version affichées dans l'app"
+        type: string
+        default: ""
+
+concurrency:
+  group: android-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: write
+
+env:
+  MAX_APK_BYTES: "10485760" # 10 Mo : le build échoue au-delà.
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      SUPABASE_URL: ${{ vars.SUPABASE_URL || secrets.SUPABASE_URL }}
+      SUPABASE_ANON_KEY: ${{ vars.SUPABASE_ANON_KEY || secrets.SUPABASE_ANON_KEY }}
+      KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+      XYD_KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+      XYD_KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+      XYD_KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+      PUBLISH: ${{ startsWith(github.ref, 'refs/tags/v') || inputs.publish == true }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Version
+        id: v
+        run: |
+          CODE=$((100 + ${{ github.run_number }}))
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then NAME="${GITHUB_REF#refs/tags/v}"; else NAME="0.1.${{ github.run_number }}"; fi
+          echo "XYD_VERSION_CODE=$CODE" >> "$GITHUB_ENV"
+          echo "XYD_VERSION_NAME=$NAME" >> "$GITHUB_ENV"
+          echo "code=$CODE" >> "$GITHUB_OUTPUT"
+          echo "name=$NAME" >> "$GITHUB_OUTPUT"
+          echo "Version $NAME ($CODE)"
+
+      - name: Keystore
+        run: |
+          if [ -n "$KEYSTORE_BASE64" ]; then
+            echo "$KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/xyd.jks"
+            echo "XYD_KEYSTORE_FILE=$RUNNER_TEMP/xyd.jks" >> "$GITHUB_ENV"
+            echo "Signature : keystore de release"
+          else
+            echo "::warning::Secret KEYSTORE_BASE64 absent : APK signé avec une clé debug (non publiable)."
+            if [ "$PUBLISH" = "true" ]; then echo "::error::Publication impossible sans keystore."; exit 1; fi
+          fi
+          if [ -z "$SUPABASE_URL" ] || [ -z "$SUPABASE_ANON_KEY" ]; then
+            echo "::warning::SUPABASE_URL / SUPABASE_ANON_KEY non définis : l'app affichera « non configurée »."
+            if [ "$PUBLISH" = "true" ]; then echo "::error::Publication impossible sans config Supabase."; exit 1; fi
+          fi
+
+      - name: Build APK release
+        run: ./gradlew :app:assembleRelease --stacktrace
+
+      - name: Taille de l'APK
+        run: |
+          APK=$(ls app/build/outputs/apk/release/*.apk | head -1)
+          SIZE=$(stat -c%s "$APK")
+          cp "$APK" xyd.apk
+          {
+            echo "## xyd ${{ steps.v.outputs.name }} (${{ steps.v.outputs.code }})"
+            echo ""
+            echo "**Taille APK : $(awk "BEGIN{printf \"%.2f\", $SIZE/1048576}") Mo** (limite : 10 Mo)"
+            echo ""
+            echo '```'
+            unzip -lv xyd.apk | awk 'NR>3 && $1 ~ /^[0-9]+$/ {printf "%10d  %s\n", $3, $8}' | sort -rn | head -15
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+          echo "APK: $SIZE octets"
+          if [ "$SIZE" -gt "$MAX_APK_BYTES" ]; then echo "::error::APK trop gros ($SIZE > $MAX_APK_BYTES)"; exit 1; fi
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: xyd-${{ steps.v.outputs.name }}
+          path: xyd.apk
+          retention-days: 30
+
+      # ------------------------------------------------------------ Publication
+      - name: Release GitHub
+        if: env.PUBLISH == 'true'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || format('v{0}', steps.v.outputs.name) }}
+          name: xyd ${{ steps.v.outputs.name }}
+          body: ${{ inputs.changelog }}
+          files: xyd.apk
+
+      - name: Upload FTP (xydhub.tech)
+        if: env.PUBLISH == 'true'
+        env:
+          FTP_HOST: ${{ secrets.FTP_HOST }}
+          FTP_USER: ${{ secrets.FTP_USER }}
+          FTP_PASSWORD: ${{ secrets.FTP_PASSWORD }}
+          FTP_DIR: ${{ vars.FTP_DIR || 'htdocs' }}
+        run: |
+          if [ -z "$FTP_HOST" ]; then echo "::warning::FTP non configuré : upload manuel de xyd.apk requis."; exit 0; fi
+          up() { curl -sS --fail --ftp-create-dirs --user "$FTP_USER:$FTP_PASSWORD" -T "$1" "ftp://$FTP_HOST/$FTP_DIR/$2"; }
+          up xyd.apk "xyd.apk"
+          up web/index.html "index.html"
+          up web/.htaccess ".htaccess"
+          up web/logo.svg "logo.svg"
+          echo "APK en ligne : https://xydhub.tech/xyd.apk"
+
+      - name: Déclarer la version dans Supabase
+        if: env.PUBLISH == 'true'
+        env:
+          SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          APK_URL: ${{ vars.APK_URL || 'https://xydhub.tech/xyd.apk' }}
+          FORCE: ${{ github.event_name == 'workflow_dispatch' && inputs.force == false && 'false' || 'true' }}
+          CHANGELOG: ${{ inputs.changelog }}
+        run: |
+          if [ -z "$SERVICE_KEY" ]; then echo "::warning::SUPABASE_SERVICE_ROLE_KEY absent : ajoute la ligne app_versions à la main."; exit 0; fi
+          CODE=${{ steps.v.outputs.code }}
+          MIN=0; [ "$FORCE" = "true" ] && MIN=$CODE
+          BODY=$(jq -n --argjson c "$CODE" --arg n "${{ steps.v.outputs.name }}" --argjson m "$MIN" \
+            --arg u "$APK_URL?v=$CODE" --arg l "$CHANGELOG" \
+            '{version_code:$c, version_name:$n, min_version_code:$m, apk_url:$u, changelog:$l}')
+          AUTH=()
+          # Les clés « sb_secret_… » ne sont pas des JWT : uniquement l'en-tête apikey.
+          [[ "$SERVICE_KEY" == eyJ* ]] && AUTH=(-H "Authorization: Bearer $SERVICE_KEY")
+          curl -sS --fail -X POST "$SUPABASE_URL/rest/v1/app_versions" \
+            -H "apikey: $SERVICE_KEY" "${AUTH[@]}" \
+            -H "Content-Type: application/json" -H "Prefer: resolution=merge-duplicates,return=minimal" \
+            -d "$BODY"
+          echo "Version $CODE déclarée (min_version_code=$MIN)"

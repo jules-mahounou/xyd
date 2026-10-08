@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Thème fenêtre minimal (framework, pas d'AppCompat) : fond noir dès le lancement, aucun flash blanc. -->
+    <style name="Theme.Xyd" parent="android:Theme.Material.NoActionBar">
+        <item name="android:windowBackground">@color/xyd_black</item>
+        <item name="android:colorBackground">@color/xyd_black</item>
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:navigationBarColor">@android:color/transparent</item>
+        <item name="android:windowLightStatusBar">false</item>
+    </style>
+</resources>

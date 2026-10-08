@@ -1,0 +1,9 @@
+# Type MIME correct pour l'APK + pas de cache (les mises à jour doivent être visibles immédiatement).
+AddType application/vnd.android.package-archive .apk
+<IfModule mod_headers.c>
+  <Files "xyd.apk">
+    Header set Cache-Control "no-cache, no-store, must-revalidate"
+    Header set Content-Disposition "attachment; filename=xyd.apk"
+  </Files>
+</IfModule>
+Options -Indexes
