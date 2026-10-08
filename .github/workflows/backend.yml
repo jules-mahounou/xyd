@@ -3,8 +3,7 @@ name: Backend (Supabase)
 on:
   workflow_dispatch:
   push:
-    branches: [main]
-    paths: ["supabase/**"]
+    paths: ["supabase/**", ".github/workflows/backend.yml"]
 
 jobs:
   deploy:
