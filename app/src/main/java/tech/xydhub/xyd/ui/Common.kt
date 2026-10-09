@@ -8,7 +8,9 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.PlayArrow
@@ -125,5 +127,23 @@ fun DownloadButton(p: Playable, onPlay: (String) -> Unit, download: (Playable) -
 
             null -> Icon(XIcons.Download, "Télécharger", tint = Xyd.Grey)
         }
+    }
+}
+
+/**
+ * Hauteur de la barre d'état. Utilise les insets Compose, avec repli sur la dimension système
+ * (certains appareils renvoient 0 au premier rendu), pour ne jamais passer sous l'horloge et les icônes.
+ */
+@Composable
+fun statusBarTop(): Dp {
+    val inset = androidx.compose.foundation.layout.WindowInsets.statusBars
+        .asPaddingValues().calculateTopPadding()
+    if (inset > 0.dp) return inset
+    val ctx = LocalContext.current
+    val density = androidx.compose.ui.platform.LocalDensity.current
+    return remember(ctx) {
+        @android.annotation.SuppressLint("InternalInsetResource", "DiscouragedApi")
+        val id = ctx.resources.getIdentifier("status_bar_height", "dimen", "android")
+        with(density) { (if (id > 0) ctx.resources.getDimensionPixelSize(id) else 0).toDp() }.coerceAtLeast(24.dp)
     }
 }

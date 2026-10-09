@@ -22,7 +22,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.layout.WindowInsets
@@ -264,7 +263,7 @@ fun PlayerScreen(mediaId: String, onPlay: (String) -> Unit, onClose: () -> Unit)
         videoBox(Modifier.fillMaxSize())
     } else {
         Column(Modifier.fillMaxSize().background(Xyd.Black)) {
-            Spacer(Modifier.fillMaxWidth().statusBarsPadding())
+            Spacer(Modifier.fillMaxWidth().height(statusBarTop()))
             videoBox(Modifier.fillMaxWidth().aspectRatio(16f / 9f))
             PortraitDetails(playable, next, mediaId, onPlay, download)
         }
