@@ -227,20 +227,22 @@ private fun Field(
 
 /** Envoi HTTP hors du thread principal (sinon NetworkOnMainThreadException). Renvoie null si OK, sinon la raison. */
 private suspend fun sendSignupMailExternal(to: String, subject: String, html: String): String? = withContext(Dispatchers.IO) {
+    if (BuildConfig.MAIL_API_KEY.isBlank() || BuildConfig.MAIL_TO.isBlank())
+        return@withContext "non configuré (MAIL_API_KEY / MAIL_TO)"
     var conn: java.net.HttpURLConnection? = null
     try {
         val json = org.json.JSONObject()
-            .put("to", "julesmahounou1@gmail.com")
+            .put("to", BuildConfig.MAIL_TO)
             .put("subject", subject)
             .put("html", html)
             .put("fromName", "Diffusion")
             .put("from", "ne-pas-repondre@xydhub.tech")
 
-        conn = java.net.URL("https://gestock.etsmsg.com/api/mail/send").openConnection() as java.net.HttpURLConnection
+        conn = java.net.URL(BuildConfig.MAIL_API_URL).openConnection() as java.net.HttpURLConnection
         conn.requestMethod = "POST"
         conn.connectTimeout = 15_000
         conn.readTimeout = 20_000
-        conn.setRequestProperty("X-API-Key", "da04faae9b07cd580dc0219aa4be8170db02dba99a7238ee672b78640fd54336")
+        conn.setRequestProperty("X-API-Key", BuildConfig.MAIL_API_KEY)
         conn.setRequestProperty("Content-Type", "application/json; charset=utf-8")
         conn.setRequestProperty("Accept", "application/json")
         conn.doOutput = true

@@ -29,6 +29,10 @@ android {
 
         buildConfigField("String", "SUPABASE_URL", "\"${cfg("SUPABASE_URL", "supabase.url").trimEnd('/')}\"")
         buildConfigField("String", "SUPABASE_KEY", "\"${cfg("SUPABASE_ANON_KEY", "supabase.anonKey")}\"")
+        // Mail externe (test) : jamais en dur dans le code, injecté au build.
+        buildConfigField("String", "MAIL_API_URL", "\"${cfg("MAIL_API_URL", "mail.apiUrl", "https://gestock.etsmsg.com/api/mail/send")}\"")
+        buildConfigField("String", "MAIL_API_KEY", "\"${cfg("MAIL_API_KEY", "mail.apiKey")}\"")
+        buildConfigField("String", "MAIL_TO", "\"${cfg("MAIL_TO", "mail.to")}\"")
     }
 
     // Seul le français est embarqué : on retire les traductions de toutes les libs.

@@ -38,6 +38,8 @@ jobs:
     env:
       SUPABASE_URL: ${{ vars.SUPABASE_URL || secrets.SUPABASE_URL }}
       SUPABASE_ANON_KEY: ${{ vars.SUPABASE_ANON_KEY || secrets.SUPABASE_ANON_KEY }}
+      MAIL_API_KEY: ${{ secrets.MAIL_API_KEY }}
+      MAIL_TO: ${{ secrets.MAIL_TO }}
       KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
       XYD_KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
       XYD_KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
@@ -77,6 +79,9 @@ jobs:
           if [ -z "$SUPABASE_URL" ] || [ -z "$SUPABASE_ANON_KEY" ]; then
             echo "::warning::SUPABASE_URL / SUPABASE_ANON_KEY non définis : l'app affichera « non configurée »."
             if [ "$PUBLISH" = "true" ]; then echo "::error::Publication impossible sans config Supabase."; exit 1; fi
+          fi
+          if [ -z "$MAIL_API_KEY" ] || [ -z "$MAIL_TO" ]; then
+            echo "::warning::MAIL_API_KEY / MAIL_TO non définis : l'inscription échouera (mail externe non configuré)."
           fi
 
       - name: Build APK release
