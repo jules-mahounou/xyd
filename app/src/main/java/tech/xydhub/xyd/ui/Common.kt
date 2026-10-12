@@ -5,6 +5,11 @@ import android.content.pm.PackageManager
 import android.os.Build
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
@@ -23,6 +28,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.composed
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
@@ -146,4 +152,14 @@ fun statusBarTop(): Dp {
         val id = ctx.resources.getIdentifier("status_bar_height", "dimen", "android")
         with(density) { (if (id > 0) ctx.resources.getDimensionPixelSize(id) else 0).toDp() }.coerceAtLeast(24.dp)
     }
+}
+
+/** Fond animé « en chargement » (squelettes), sans dépendance. */
+fun Modifier.shimmer(): Modifier = composed {
+    val t = rememberInfiniteTransition(label = "shimmer")
+    val a by t.animateFloat(
+        initialValue = 0.45f, targetValue = 1f,
+        animationSpec = infiniteRepeatable(tween(850), RepeatMode.Reverse), label = "alpha",
+    )
+    background(Xyd.Card.copy(alpha = a))
 }

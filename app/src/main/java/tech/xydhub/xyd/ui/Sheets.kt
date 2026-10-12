@@ -49,6 +49,8 @@ import androidx.compose.material3.SegmentedButton
 import androidx.compose.material3.SegmentedButtonDefaults
 import androidx.compose.material3.SheetValue
 import androidx.compose.material3.SingleChoiceSegmentedButtonRow
+import androidx.compose.material3.Switch
+import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberModalBottomSheetState
@@ -559,6 +561,14 @@ fun SettingsSheet(onDismiss: () -> Unit) {
                 }
             }
 
+            Label("Téléchargement intelligent")
+            val autoNext by Repo.autoNext.collectAsStateWithLifecycle()
+            val wifiOnly by Repo.wifiOnly.collectAsStateWithLifecycle()
+            val deleteWatched by Repo.deleteWatched.collectAsStateWithLifecycle()
+            ToggleRow("Épisode suivant automatique", "Télécharge le suivant quand tu as vu 80 % d'un épisode", autoNext, Repo::setAutoNext)
+            ToggleRow("Wi-Fi uniquement", "Pas de téléchargement automatique sur les données mobiles", wifiOnly, Repo::setWifiOnly, enabled = autoNext)
+            ToggleRow("Supprimer les épisodes vus", "Libère la place dès qu'un épisode est terminé", deleteWatched, Repo::setDeleteWatched)
+
             Label("Stockage")
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text("Vidéos téléchargées : ${fmtSize(used).ifBlank { "0 Mo" }}", color = Xyd.Grey, modifier = Modifier.weight(1f))
@@ -594,4 +604,24 @@ private fun Label(text: String) {
         text.uppercase(), color = Xyd.Muted, fontSize = 11.sp, letterSpacing = 1.sp,
         fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(top = 20.dp, bottom = 8.dp),
     )
+}
+
+@Composable
+private fun ToggleRow(title: String, subtitle: String, checked: Boolean, onChange: (Boolean) -> Unit, enabled: Boolean = true) {
+    Row(
+        Modifier.fillMaxWidth().clickable(enabled = enabled) { onChange(!checked) }.padding(vertical = 6.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Column(Modifier.weight(1f).padding(end = 12.dp)) {
+            Text(title, fontSize = 15.sp, color = if (enabled) Xyd.Text else Xyd.Muted)
+            Text(subtitle, fontSize = 12.sp, color = Xyd.Muted, lineHeight = 16.sp)
+        }
+        Switch(
+            checked = checked, onCheckedChange = onChange, enabled = enabled,
+            colors = SwitchDefaults.colors(
+                checkedThumbColor = Xyd.Black, checkedTrackColor = Xyd.Grey,
+                uncheckedThumbColor = Xyd.Muted, uncheckedTrackColor = Xyd.Card, uncheckedBorderColor = Xyd.Line,
+            ),
+        )
+    }
 }

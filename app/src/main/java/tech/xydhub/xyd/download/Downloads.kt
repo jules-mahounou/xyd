@@ -2,6 +2,7 @@ package tech.xydhub.xyd.download
 
 import android.content.Context
 import android.content.Intent
+import android.net.ConnectivityManager
 import androidx.core.content.ContextCompat
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -10,6 +11,7 @@ import org.json.JSONArray
 import org.json.JSONObject
 import tech.xydhub.xyd.data.Episode
 import tech.xydhub.xyd.data.Playable
+import tech.xydhub.xyd.data.Repo
 import tech.xydhub.xyd.data.Season
 import tech.xydhub.xyd.data.Title
 import java.io.File
@@ -91,6 +93,30 @@ object Downloads {
         persist(force = true)
         startService(context)
     }
+
+    /**
+     * Téléchargement intelligent : met en file l'épisode suivant (réglage « suivant automatique »),
+     * en Wi-Fi seulement si demandé. Sans effet s'il est déjà téléchargé, en cours ou en pause.
+     */
+    fun autoQueueNext(context: Context, current: Playable) {
+        if (!Repo.autoNext.value) return
+        val n = Repo.next(current) ?: return
+        if (_items.value[n.mediaId] != null) return
+        if (Repo.wifiOnly.value && isMetered(context)) return
+        enqueue(context, n)
+    }
+
+    /** Supprime un épisode terminé si l'option « supprimer les épisodes vus » est active. */
+    fun cleanupWatched(mediaId: String) {
+        if (!Repo.deleteWatched.value) return
+        if (Repo.progress.value[mediaId]?.finished != true) return
+        val d = _items.value[mediaId] ?: return
+        if (d.isFilm || d.status != DlStatus.DONE) return
+        remove(mediaId)
+    }
+
+    private fun isMetered(context: Context): Boolean =
+        context.getSystemService(ConnectivityManager::class.java)?.isActiveNetworkMetered ?: true
 
     fun pause(mediaId: String) = set(mediaId) { it.copy(status = DlStatus.PAUSED) }
 

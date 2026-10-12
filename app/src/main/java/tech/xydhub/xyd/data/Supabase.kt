@@ -117,7 +117,7 @@ object Supabase {
     // ---------- Données ----------
 
     suspend fun fetchCatalog(): String = authedOk(
-        "/rest/v1/titles?select=id,kind,name,synopsis,poster_url,backdrop_url,year,duration_s,size_bytes," +
+        "/rest/v1/titles?select=id,kind,name,synopsis,poster_url,backdrop_url,year,duration_s,size_bytes,featured,created_at," +
             "seasons(id,number,name,episodes(id,number,name,synopsis,duration_s,size_bytes))" +
             "&published=eq.true&order=sort.asc,created_at.desc"
     )

@@ -56,6 +56,13 @@ object Repo {
         _orientation.value = runCatching { OrientationMode.valueOf(prefs.getString("orientation", "AUTO")!!) }
             .getOrDefault(OrientationMode.AUTO)
         loadLocalProgress()
+        runCatching {
+            val o = JSONObject(prefs.getString("hidden_resume", "{}")!!)
+            _hiddenResume.value = o.keys().asSequence().associateWith { o.getLong(it) }
+        }
+        _autoNext.value = prefs.getBoolean("auto_next", true)
+        _wifiOnly.value = prefs.getBoolean("wifi_only", true)
+        _deleteWatched.value = prefs.getBoolean("delete_watched", false)
         runCatching { if (catalogFile.exists()) _catalog.value = Parse.catalog(catalogFile.readText()) }
         runCatching { if (categoriesFile.exists()) _categories.value = Parse.categories(categoriesFile.readText()) }
         Downloads.init(ctx)
@@ -159,14 +166,44 @@ object Repo {
     }
 
     /** « Continuer à regarder » : dernier élément entamé de chaque titre, du plus récent au plus ancien. */
-    fun continueWatching(catalog: List<Title>, prog: Map<String, Progress>): List<Pair<Playable, Progress>> =
+    /**
+     * « Continuer à regarder » : pour chaque titre, le dernier élément entamé ; si c'était un épisode
+     * terminé, on propose directement l'épisode suivant. Les titres masqués réapparaissent dès qu'on
+     * reprend la lecture après les avoir masqués.
+     */
+    fun continueWatching(
+        catalog: List<Title>,
+        prog: Map<String, Progress>,
+        hidden: Map<String, Long> = emptyMap(),
+    ): List<Pair<Playable, Progress>> =
         catalog.mapNotNull { t ->
             val items = if (t.isFilm) listOf(Playable(t, null, null))
             else t.seasons.flatMap { s -> s.episodes.map { Playable(t, s, it) } }
-            items.mapNotNull { p -> prog[p.mediaId]?.let { p to it } }
-                .filter { !it.second.finished && it.second.positionMs > 5_000 }
-                .maxByOrNull { it.second.updatedAt }
+            val last = items.mapNotNull { p -> prog[p.mediaId]?.let { p to it } }
+                .filter { it.second.finished || it.second.positionMs > 5_000 }
+                .maxByOrNull { it.second.updatedAt } ?: return@mapNotNull null
+            if ((hidden[t.id] ?: 0L) >= last.second.updatedAt) return@mapNotNull null
+            if (!last.second.finished) return@mapNotNull last
+            val n = next(last.first) ?: return@mapNotNull null
+            if (prog[n.mediaId]?.finished == true) return@mapNotNull null
+            n to (prog[n.mediaId] ?: Progress(0, n.durationS * 1000L, last.second.updatedAt))
         }.sortedByDescending { it.second.updatedAt }
+
+    private val _hiddenResume = MutableStateFlow<Map<String, Long>>(emptyMap())
+    val hiddenResume: StateFlow<Map<String, Long>> = _hiddenResume
+
+    /** Retire un titre de « Continuer à regarder » (jusqu'à la prochaine lecture). */
+    fun hideFromContinue(titleId: String) {
+        _hiddenResume.value = _hiddenResume.value + (titleId to System.currentTimeMillis())
+        prefs.edit().putString("hidden_resume", JSONObject(_hiddenResume.value as Map<*, *>).toString()).apply()
+    }
+
+    /** Marque un film ou un épisode comme vu (synchronisé comme une progression normale). */
+    fun markWatched(p: Playable) {
+        val d = _progress.value[p.mediaId]?.durationMs?.takeIf { it > 0 } ?: (p.durationS * 1000L).coerceAtLeast(1L)
+        saveProgress(p.mediaId, d, d)
+        syncProgressLater()
+    }
 
     // ---------- Progression ----------
 
@@ -234,6 +271,18 @@ object Repo {
     }
 
     // ---------- Réglages ----------
+
+    // Téléchargement intelligent
+    private val _autoNext = MutableStateFlow(true)
+    val autoNext: StateFlow<Boolean> = _autoNext
+    private val _wifiOnly = MutableStateFlow(true)
+    val wifiOnly: StateFlow<Boolean> = _wifiOnly
+    private val _deleteWatched = MutableStateFlow(false)
+    val deleteWatched: StateFlow<Boolean> = _deleteWatched
+
+    fun setAutoNext(v: Boolean) { _autoNext.value = v; prefs.edit().putBoolean("auto_next", v).apply() }
+    fun setWifiOnly(v: Boolean) { _wifiOnly.value = v; prefs.edit().putBoolean("wifi_only", v).apply() }
+    fun setDeleteWatched(v: Boolean) { _deleteWatched.value = v; prefs.edit().putBoolean("delete_watched", v).apply() }
 
     fun setOrientation(m: OrientationMode) {
         _orientation.value = m

@@ -374,7 +374,7 @@ function renderList() {
       titles.map((t) => h("div", { class: "tile", onclick: () => renderEditor(t) },
         h("div", { class: "poster", style: t.poster_url ? { backgroundImage: `url("${t.poster_url}")` } : {} },
           t.poster_url ? "" : t.name,
-          h("span", { class: "badge" + (t.published ? "" : " off") }, t.kind === "film" ? "Film" : `${t.seasons.length} saison${t.seasons.length > 1 ? "s" : ""}`, t.published ? "" : " · masqué")),
+          h("span", { class: "badge" + (t.published ? "" : " off") }, t.kind === "film" ? "Film" : `${t.seasons.length} saison${t.seasons.length > 1 ? "s" : ""}`, t.published ? "" : " · masqué", t.featured ? " · ★ à la une" : "")),
         h("div", { class: "name" }, t.name),
       )),
     ) : h("p", { class: "muted", style: { marginTop: "24px" } }, "Aucun contenu. Commence par ajouter une série ou un film."),
@@ -382,7 +382,7 @@ function renderList() {
 }
 
 function newTitle(kind) {
-  return { _new: true, id: crypto.randomUUID(), kind, name: "", synopsis: "", year: new Date().getFullYear(), published: true, sort: 0, poster_url: null, backdrop_url: null, video_key: null, duration_s: 0, size_bytes: 0, seasons: [] };
+  return { _new: true, id: crypto.randomUUID(), kind, name: "", synopsis: "", year: new Date().getFullYear(), published: true, featured: false, sort: 0, poster_url: null, backdrop_url: null, video_key: null, duration_s: 0, size_bytes: 0, seasons: [] };
 }
 
 function renderEditor(t) {
@@ -393,6 +393,7 @@ function renderEditor(t) {
     sort: h("input", { type: "number", value: t.sort ?? 0 }),
     synopsis: h("textarea", { placeholder: "Résumé" }),
     published: h("input", { type: "checkbox", checked: t.published }),
+    featured: h("input", { type: "checkbox", checked: t.featured }),
   };
   f.synopsis.value = t.synopsis || "";
   let pendingVideo = null; // nouveau film : vidéo choisie avant l'enregistrement
@@ -449,7 +450,7 @@ function renderEditor(t) {
     err.textContent = "";
     const row = {
       name: f.name.value.trim(), synopsis: f.synopsis.value.trim(), year: Number(f.year.value) || null,
-      sort: Number(f.sort.value) || 0, published: f.published.checked,
+      sort: Number(f.sort.value) || 0, published: f.published.checked, featured: f.featured.checked,
       poster_url: t.poster_url, backdrop_url: t.backdrop_url,
     };
     if (!row.name) return (err.textContent = "Le nom est obligatoire.");
@@ -510,6 +511,8 @@ function renderEditor(t) {
       h("div", { class: "imgs" }, imgBox("poster"), imgBox("backdrop")),
       h("label", { style: { display: "flex", alignItems: "center", gap: "8px", textTransform: "none", letterSpacing: 0, fontSize: "14px", color: "var(--text)" } },
         f.published, "Visible dans l'app"),
+      h("label", { style: { display: "flex", alignItems: "center", gap: "8px", textTransform: "none", letterSpacing: 0, fontSize: "14px", color: "var(--text)", marginTop: "8px" } },
+        f.featured, "À la une (grande bannière de l'accueil)"),
       catsAvailable && categories.length ? h("div", {},
         h("label", {}, "Catégories"),
         t._new ? h("p", { class: "muted" }, "Disponible après la création.") : titleCategoryChips(t),

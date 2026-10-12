@@ -25,6 +25,8 @@ data class Title(
     val durationS: Int,
     val sizeBytes: Long,
     val seasons: List<Season>,
+    val featured: Boolean = false,
+    val createdAt: String = "",
 )
 
 /** Rangée de l'accueil définie dans l'admin (Top 10, Anime…). `titleIds` déjà triés. */
@@ -97,6 +99,8 @@ object Parse {
                 year = o.optInt("year"),
                 durationS = o.optInt("duration_s"),
                 sizeBytes = o.optLong("size_bytes"),
+                featured = o.optBoolean("featured"),
+                createdAt = o.optString("created_at"),
                 seasons = (0 until seasons.length()).map { j ->
                     val s = seasons.getJSONObject(j)
                     val eps = s.optJSONArray("episodes") ?: JSONArray()

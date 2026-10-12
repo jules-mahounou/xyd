@@ -95,6 +95,6 @@ fun RemoteImage(url: String?, modifier: Modifier = Modifier, contentScale: Conte
         }
         img?.let {
             Image(it, null, Modifier.matchParentSize(), contentScale = contentScale)
-        } ?: Box(Modifier.matchParentSize())
+        } ?: Box(Modifier.matchParentSize().shimmer())
     }
 }

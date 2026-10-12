@@ -65,6 +65,7 @@ import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -175,6 +176,7 @@ fun PlayerScreen(mediaId: String, onPlay: (String) -> Unit, onClose: () -> Unit)
         player.addListener(l)
         onDispose {
             save()
+            player.currentMediaItem?.mediaId?.let { Downloads.cleanupWatched(it) }
             Repo.syncProgressLater()
             player.removeListener(l)
             player.release()
@@ -193,6 +195,8 @@ fun PlayerScreen(mediaId: String, onPlay: (String) -> Unit, onClose: () -> Unit)
     // Chargement du média (et changement d'épisode) avec reprise de la position.
     LaunchedEffect(mediaId) {
         save()
+        // Épisode précédent terminé : suppression automatique si l'option est active.
+        player.currentMediaItem?.mediaId?.takeIf { it != mediaId }?.let { Downloads.cleanupWatched(it) }
         error = null
         ended = false
         if (!Downloads.isReady(mediaId)) {
@@ -205,13 +209,20 @@ fun PlayerScreen(mediaId: String, onPlay: (String) -> Unit, onClose: () -> Unit)
         player.play()
     }
 
-    // Sauvegarde périodique + horloge de l'UI.
+    // Sauvegarde périodique + horloge de l'UI + téléchargement intelligent (épisode suivant à 80 %).
+    val currentPlayable by rememberUpdatedState(playable)
     LaunchedEffect(player) {
         var tick = 0
+        var queuedFor: String? = null
         while (true) {
             position = player.currentPosition
             if (player.duration > 0) duration = player.duration
             if (++tick % 10 == 0 && player.isPlaying) save()
+            val p = currentPlayable
+            if (p?.episode != null && queuedFor != p.mediaId && duration > 0 && position >= duration * 0.8) {
+                queuedFor = p.mediaId
+                Downloads.autoQueueNext(ctx, p)
+            }
             delay(500)
         }
     }
