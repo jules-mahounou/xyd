@@ -1,7 +1,7 @@
 // Edge Function appelée par le trigger SQL à chaque inscription (via pg_net) :
 // envoie un mail à l'admin avec les champs choisis dans l'admin. Un profil n'est notifié qu'une fois.
 // Body : { user_id }    — ou, depuis l'admin connecté : { test: true } pour un mail d'essai.
-// Aucun mot de passe n'est jamais lu, stocké ni envoyé.
+
 import { createClient } from "jsr:@supabase/supabase-js@2";
 import { sendMail, smtpConfigured } from "../_shared/mail.ts";
 

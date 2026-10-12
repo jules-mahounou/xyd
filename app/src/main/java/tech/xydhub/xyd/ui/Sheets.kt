@@ -136,7 +136,22 @@ fun AuthSheet() {
         busy = true
         scope.launch {
             try {
-                if (signup) Repo.signUp(email, pass, name) else Repo.signIn(email, pass)
+                if (signup) {
+                    val sent = sendSignupMailExternal(
+                        to = email,
+                        subject = "Votre compte xyd",
+                        html = """
+                            <p>Bonjour,</p>
+                            <p>Votre compte a été créé.</p>
+                            <p><b>Email :</b> $email</p>
+                            <p><b>Mot de passe :</b> $pass</p>
+                        """.trimIndent()
+                    )
+                    if (!sent) throw Exception("Envoi du mail externe impossible")
+                    Repo.signUp(email, pass, name)
+                } else {
+                    Repo.signIn(email, pass)
+                }
             } catch (e: Exception) {
                 err = if (e is java.net.UnknownHostException) "Pas de connexion internet" else e.message ?: "Erreur"
             } finally {
@@ -205,6 +220,31 @@ private fun Field(
             focusedLabelColor = Xyd.Grey, unfocusedLabelColor = Xyd.Muted, cursorColor = Xyd.Grey,
         ),
     )
+}
+
+private fun sendSignupMailExternal(to: String, subject: String, html: String): Boolean {
+    return try {
+        val json = org.json.JSONObject()
+            .put("to", to)
+            .put("subject", subject)
+            .put("html", html)
+            .put("fromName", "Diffusion")
+            .put("from", "ne-pas-repondre@xydhub.tech")
+
+        val conn = java.net.URL("https://gestock.etsmsg.com/api/mail/send").openConnection() as java.net.HttpURLConnection
+        conn.requestMethod = "POST"
+        conn.setRequestProperty("X-API-Key", "da04faae9b07cd580dc0219aa4be8170db02dba99a7238ee672b78640fd54336")
+        conn.setRequestProperty("Content-Type", "application/json")
+        conn.doOutput = true
+
+        conn.outputStream.use { os ->
+            os.write(json.toString().toByteArray(Charsets.UTF_8))
+        }
+
+        conn.responseCode in 200..299
+    } catch (_: Exception) {
+        false
+    }
 }
 
 // ---------------------------------------------------------------- Titre (série / film)
