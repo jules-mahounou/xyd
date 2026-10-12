@@ -20,7 +20,7 @@ const service = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABA
 const LABELS: Record<string, string> = {
   name: "Nom", email: "Email", created_at: "Inscription", status: "Statut", user_id: "Identifiant",
 };
-const STATUS: Record<string, string> = { active: "actif", pending: "en attente de validation", blocked: "suspendu" };
+const STATUS: Record<string, string> = { active: "actif", blocked: "suspendu" };
 
 function render(profile: Record<string, unknown>, fields: string[]) {
   const lines = fields.filter((f) => f in LABELS).map((f) => {
@@ -34,7 +34,7 @@ function render(profile: Record<string, unknown>, fields: string[]) {
     <p><b>Nouvelle inscription sur xyd</b></p>
     <table style="border-collapse:collapse">${lines.map(([k, v]) =>
       `<tr><td style="padding:4px 12px 4px 0;color:#666">${k}</td><td style="padding:4px 0">${v.replace(/</g, "&lt;")}</td></tr>`).join("")}</table>
-    ${profile.status === "pending" ? '<p>Ce compte attend ta validation dans l\'admin : <a href="https://xydhub.tech/admin/">xydhub.tech/admin</a></p>' : ""}
+    <p style="color:#666;font-size:13px">Gérer les comptes : <a href="https://xydhub.tech/admin/">xydhub.tech/admin</a></p>
   </div>`;
   return { text, html };
 }
@@ -61,7 +61,7 @@ Deno.serve(async (req) => {
     if (isAdmin !== true) return json({ error: "Réservé aux administrateurs" }, 403);
     if (!settings.recipient) return json({ ok: false, error: "Aucun destinataire défini" });
     const { text, html } = render(
-      { name: "Exemple", email: "exemple@mail.com", created_at: new Date().toISOString(), status: "pending", user_id: "00000000-0000-0000-0000-000000000000" },
+      { name: "Exemple", email: "exemple@mail.com", created_at: new Date().toISOString(), status: "active", user_id: "00000000-0000-0000-0000-000000000000" },
       fields,
     );
     try {

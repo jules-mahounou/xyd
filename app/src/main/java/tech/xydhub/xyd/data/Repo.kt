@@ -34,7 +34,7 @@ object Repo {
     private val _categories = MutableStateFlow<List<Category>>(emptyList())
     val categories: StateFlow<List<Category>> = _categories
     val loading = MutableStateFlow(false)
-    /** "pending" / "blocked" : l'accueil affiche un écran dédié au lieu du catalogue. */
+    /** "blocked" : compte suspendu, l'accueil affiche un écran dédié au lieu du catalogue. */
     val accountStatus = MutableStateFlow<String?>(null)
     val error = MutableStateFlow<String?>(null)
 

@@ -126,7 +126,7 @@ object Supabase {
         "/rest/v1/categories?select=id,name,ranked,title_categories(title_id,position)&order=sort.asc,created_at.asc"
     )
 
-    /** Statut du compte connecté : "active", "pending" ou "blocked" (null si inconnu). */
+    /** Statut du compte connecté : "active" ou "blocked" (null si inconnu). */
     suspend fun myStatus(userId: String): String? {
         val arr = org.json.JSONArray(authedOk("/rest/v1/profiles?select=status&user_id=eq.$userId"))
         return if (arr.length() == 0) null else arr.getJSONObject(0).optString("status").ifBlank { null }

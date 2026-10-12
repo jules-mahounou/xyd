@@ -306,14 +306,14 @@ fun HomeScreen(onPlay: (String) -> Unit) {
 
     if (session == null) {
         AuthSheet()
-    } else if (accountStatus == "pending" || accountStatus == "blocked") {
-        AccountGate(accountStatus!!)
+    } else if (accountStatus == "blocked") {
+        AccountGate()
     }
 }
 
-/** Compte en attente de validation ou suspendu : écran verrouillé avec actualisation. */
+/** Compte suspendu par l'administrateur : écran verrouillé avec actualisation. */
 @Composable
-private fun AccountGate(status: String) {
+private fun AccountGate() {
     val loading by Repo.loading.collectAsStateWithLifecycle()
     XSheet(onDismiss = {}, locked = true) {
         Column(
@@ -322,13 +322,9 @@ private fun AccountGate(status: String) {
         ) {
             Logo(52.dp)
             Spacer(Modifier.height(16.dp))
+            Text("Accès suspendu", fontSize = 22.sp, fontWeight = FontWeight.SemiBold)
             Text(
-                if (status == "pending") "Compte en attente" else "Accès suspendu",
-                fontSize = 22.sp, fontWeight = FontWeight.SemiBold,
-            )
-            Text(
-                if (status == "pending") "Ton inscription est bien reçue. L'administrateur doit valider ton compte avant que tu puisses regarder."
-                else "Ton accès à xyd a été suspendu par l'administrateur.",
+                "Ton accès à xyd a été suspendu par l'administrateur.",
                 color = Xyd.Grey, fontSize = 14.sp, textAlign = TextAlign.Center, lineHeight = 20.sp,
                 modifier = Modifier.padding(top = 10.dp),
             )

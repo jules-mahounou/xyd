@@ -109,7 +109,6 @@
   .user .who small { display:block; color:var(--muted); font-size:12px; }
   .st { font-size:11px; padding:2px 8px; border-radius:20px; border:1px solid var(--line); }
   .st.active { color:var(--ok); border-color:#1f3b25; }
-  .st.pending { color:#f5a524; border-color:#4a3a14; }
   .st.blocked { color:var(--danger); border-color:#3a1d1e; }
   .fields { display:flex; gap:14px; flex-wrap:wrap; margin-top:6px; }
   [hidden] { display:none !important; }
@@ -341,7 +340,7 @@ async function load() {
   usersAvailable = !us.error;
   users = us.data || [];
   const ss = await sb.from("app_settings").select("value").eq("key", "signup").maybeSingle();
-  signupSettings = ss.data?.value || { require_approval: false, notify: true, recipient: null, fields: ["name", "email", "created_at", "status"] };
+  signupSettings = ss.data?.value || { notify: true, recipient: null, fields: ["name", "email", "created_at"] };
 
   const cats = await sb.from("categories")
     .select("id, name, sort, ranked, title_categories(title_id, position)")
@@ -393,8 +392,10 @@ function renderList() {
       h("button", { onclick: () => renderEditor(newTitle("serie")) }, "+ Série"),
       h("button", { onclick: () => renderEditor(newTitle("film")) }, "+ Film"),
     ),
-    usersAvailable ? collapsible(usersCard(), "users", users.some((u) => u.status === "pending"),
-      () => { const n = users.filter((u) => u.status === "pending").length; return `${users.length} compte${users.length > 1 ? "s" : ""}${n ? ` · ${n} en attente` : ""}`; }) : "",
+    usersAvailable ? collapsible(usersCard(), "users", false, () => {
+      const n = users.filter((u) => u.status === "blocked").length;
+      return `${users.length} compte${users.length > 1 ? "s" : ""}${n ? ` · ${n} suspendu${n > 1 ? "s" : ""}` : ""}`;
+    }) : "",
     storagesAvailable ? collapsible(storageCard(), "storage", false, () => {
       const act = storages.filter((x) => x.active);
       const u = act.reduce((a, x) => a + x.used_bytes, 0), q = act.reduce((a, x) => a + x.quota_bytes, 0);
@@ -598,7 +599,7 @@ function collapsible(card, id, defaultOpen, summary) {
 }
 
 // ---------------------------------------------------------------- utilisateurs
-const STATUS_LABEL = { active: "actif", pending: "en attente", blocked: "suspendu" };
+const STATUS_LABEL = { active: "actif", blocked: "suspendu" };
 const FIELD_LABEL = { name: "Nom", email: "Email", created_at: "Date d'inscription", status: "Statut", user_id: "Identifiant" };
 
 async function usersFn(body) {
@@ -628,13 +629,11 @@ function usersCard() {
     if (error) return fail(error);
     u.status = status;
     render();
-    toast(status === "active" ? "Compte activé" : status === "blocked" ? "Compte suspendu" : "Compte mis en attente");
+    toast(status === "active" ? "Compte réactivé" : "Compte suspendu");
   }
 
   const render = () => {
     const st = signupSettings;
-    const approval = h("input", { type: "checkbox", checked: !!st.require_approval });
-    approval.onchange = () => saveSettings({ require_approval: approval.checked });
     const notify = h("input", { type: "checkbox", checked: st.notify !== false });
     notify.onchange = () => saveSettings({ notify: notify.checked });
     const recipient = h("input", { type: "email", value: st.recipient || "", placeholder: "ton adresse mail", style: { maxWidth: "280px" } });
@@ -662,10 +661,8 @@ function usersCard() {
     card.replaceChildren(
       h("div", { class: "row" }, h("h3", { style: { flex: 1 } }, "Utilisateurs")),
       h("div", { class: "sform", style: { marginTop: "12px" } },
-        h("b", {}, "Inscriptions"),
-        h("label", { class: "check", style: { display: "flex", marginTop: "10px" } }, approval,
-          "Valider manuellement chaque nouveau compte (il reste « en attente » jusqu'à ton accord)"),
-        h("label", { class: "check", style: { display: "flex", marginTop: "8px" } }, notify, "M'envoyer un mail à chaque inscription"),
+        h("b", {}, "Mail à chaque inscription"),
+        h("label", { class: "check", style: { display: "flex", marginTop: "10px" } }, notify, "M'informer par mail de chaque nouvelle inscription"),
         h("label", {}, "Destinataire"), recipient,
         h("label", {}, "Informations dans le mail"), fields,
         h("div", { class: "row", style: { marginTop: "12px" } }, test, testStatus),
@@ -682,7 +679,6 @@ function usersCard() {
     return h("div", { class: "user" },
       h("div", { class: "who" }, h("b", {}, u.name || "—"), self ? h("span", { class: "muted" }, " (toi)") : "", h("small", {}, `${u.email} · ${date}`)),
       h("span", { class: "st " + u.status }, STATUS_LABEL[u.status] || u.status),
-      u.status === "pending" ? h("button", { onclick: () => setStatus(u, "active") }, "Valider") : "",
       !self && u.status === "active" ? h("button", { class: "link", onclick: () => setStatus(u, "blocked") }, "Suspendre") : "",
       !self && u.status === "blocked" ? h("button", { class: "link", onclick: () => setStatus(u, "active") }, "Réactiver") : "",
       h("button", { class: "link", title: "Choisir un nouveau mot de passe pour ce compte", onclick: async () => {
