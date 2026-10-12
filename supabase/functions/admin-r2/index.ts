@@ -3,8 +3,11 @@
 //  - { action: "release", storage_id, size }           -> libère une réservation (envoi annulé/échoué)
 //  - { action: "delete", items: [{ key, storage_id, size }] } -> supprime des vidéos et libère l'espace
 //  - { action: "test", storage_id }                    -> vérifie les identifiants (écriture + suppression)
+//  - { action: "setup-cors", storage_id, origins, key_id?, app_key? }
+//      -> pose la règle CORS qui autorise l'envoi depuis l'admin (B2 : API native ; S3 : PutBucketCors)
 import { createClient } from "jsr:@supabase/supabase-js@2";
 import { backend, forget, objectUrl, presign } from "../_shared/storage.ts";
+import { crypto as stdCrypto } from "jsr:@std/crypto@1";
 
 const CORS = {
   "Access-Control-Allow-Origin": "*",
@@ -88,8 +91,91 @@ Deno.serve(async (req) => {
       return json({ ok: true, delete_ok: del.ok || del.status === 404 });
     }
 
+    if (body.action === "setup-cors") {
+      if (!validId(body.storage_id)) return json({ error: "storage_id invalide" }, 400);
+      const origins = (Array.isArray(body.origins) ? body.origins : [])
+        .filter((o): o is string => typeof o === "string" && /^https:\/\/[a-z0-9.-]+(:\d+)?$/i.test(o));
+      if (!origins.length) return json({ error: "Origine invalide" }, 400);
+      const service = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!, { auth: { persistSession: false } });
+      const { data: rows } = await supabase.from("storage_backends").select("provider, bucket").eq("id", body.storage_id).single();
+      const { data: creds } = await service.rpc("storage_credentials", { p_id: body.storage_id });
+      const c = Array.isArray(creds) ? creds[0] : creds;
+      if (!rows || !c) return json({ error: "Stockage introuvable" }, 404);
+      if (c.is_env) return json({ error: "Le R2 principal se configure dans le tableau de bord Cloudflare." }, 400);
+
+      if (rows.provider === "b2") {
+        // Clé optionnelle (ex. clé maître) utilisée une seule fois et jamais enregistrée.
+        const keyId = typeof body.key_id === "string" && body.key_id ? body.key_id : c.access_key;
+        const appKey = typeof body.app_key === "string" && body.app_key ? body.app_key : c.secret_key;
+        return json(await b2Cors(keyId, appKey, rows.bucket ?? c.bucket, origins));
+      }
+      return json(await s3Cors(await backend(body.storage_id), origins));
+    }
+
     return json({ error: "Action inconnue" }, 400);
   } catch (e) {
     return json({ error: (e as Error).message }, 500);
   }
 });
+
+// ---------- CORS ----------
+
+/** Backblaze B2 : la règle doit lister s3_put explicitement (l'interface web ne propose que le téléchargement). */
+async function b2Cors(keyId: string, appKey: string, bucketName: string, origins: string[]) {
+  const auth = await fetch("https://api.backblazeb2.com/b2api/v3/b2_authorize_account", {
+    headers: { Authorization: "Basic " + btoa(`${keyId}:${appKey}`) },
+  });
+  const a = await auth.json();
+  if (!auth.ok) return { ok: false, error: `Connexion B2 refusée : ${a.message ?? auth.status}` };
+  const apiUrl = a.apiInfo?.storageApi?.apiUrl;
+  const call = async (name: string, payload: unknown) => {
+    const r = await fetch(`${apiUrl}/b2api/v3/${name}`, {
+      method: "POST",
+      headers: { Authorization: a.authorizationToken, "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    return { ok: r.ok, status: r.status, body: await r.json().catch(() => ({})) };
+  };
+  const list = await call("b2_list_buckets", { accountId: a.accountId, bucketName });
+  const bucket = list.body.buckets?.[0];
+  if (!list.ok || !bucket) return { ok: false, error: `Bucket « ${bucketName} » introuvable avec cette clé.` };
+  const upd = await call("b2_update_bucket", {
+    accountId: a.accountId,
+    bucketId: bucket.bucketId,
+    corsRules: [{
+      corsRuleName: "xydAdminUpload",
+      allowedOrigins: origins,
+      allowedOperations: ["s3_put", "s3_get", "s3_head", "b2_download_file_by_name", "b2_download_file_by_id"],
+      allowedHeaders: ["*"],
+      maxAgeSeconds: 3600,
+    }],
+  });
+  if (!upd.ok) {
+    const needMaster = upd.status === 401 || upd.status === 403;
+    return {
+      ok: false,
+      need_master_key: needMaster,
+      error: needMaster
+        ? "Cette clé n'a pas le droit de modifier le bucket (writeBuckets). Utilise ta clé maître B2, une seule fois."
+        : `B2 a refusé la règle : ${upd.body.message ?? upd.status}`,
+    };
+  }
+  return { ok: true };
+}
+
+/** S3 générique (IDrive e2, Filebase…) : PutBucketCors. */
+async function s3Cors(b: { client: { fetch: (u: URL, init: RequestInit) => Promise<Response> }; base: string }, origins: string[]) {
+  const xml = `<CORSConfiguration><CORSRule>${origins.map((o) => `<AllowedOrigin>${o}</AllowedOrigin>`).join("")}` +
+    `<AllowedMethod>PUT</AllowedMethod><AllowedMethod>GET</AllowedMethod><AllowedMethod>HEAD</AllowedMethod>` +
+    `<AllowedHeader>*</AllowedHeader><ExposeHeader>ETag</ExposeHeader><MaxAgeSeconds>3600</MaxAgeSeconds>` +
+    `</CORSRule></CORSConfiguration>`;
+  const bytes = new TextEncoder().encode(xml);
+  const md5 = btoa(String.fromCharCode(...new Uint8Array(await stdCrypto.subtle.digest("MD5", bytes))));
+  const r = await b.client.fetch(new URL(`${b.base}?cors`), {
+    method: "PUT",
+    body: bytes,
+    headers: { "Content-MD5": md5, "Content-Type": "application/xml" },
+  });
+  if (!r.ok) return { ok: false, error: `Le fournisseur a refusé la règle CORS (HTTP ${r.status}) : ${(await r.text()).slice(0, 200)}` };
+  return { ok: true };
+}

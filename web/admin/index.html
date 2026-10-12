@@ -640,6 +640,22 @@ function storageCard() {
         status.style.color = r.ok ? "var(--ok)" : "var(--danger)";
       } catch (e) { status.textContent = "✗ " + e.message; status.style.color = "var(--danger)"; }
     };
+    // Pose la règle CORS qui autorise l'envoi depuis cette page (B2 : s3_put n'est pas proposé dans leur interface web).
+    const cors = async () => {
+      const host = location.hostname.replace(/^www\./, "");
+      const origins = [...new Set([location.origin, `https://${host}`, `https://www.${host}`])];
+      status.textContent = "Configuration CORS…"; status.style.color = "";
+      try {
+        let r = await r2({ action: "setup-cors", storage_id: x.id, origins });
+        if (!r.ok && r.need_master_key) {
+          const kid = prompt("Cette clé ne peut pas modifier le bucket.\nkeyID de ta clé maître B2 (utilisée une seule fois, jamais enregistrée) :");
+          const ak = kid && prompt("applicationKey de la clé maître B2 :");
+          if (kid && ak) r = await r2({ action: "setup-cors", storage_id: x.id, origins, key_id: kid.trim(), app_key: ak.trim() });
+        }
+        status.textContent = r.ok ? "✓ CORS configuré (actif sous quelques minutes)" : "✗ " + r.error;
+        status.style.color = r.ok ? "var(--ok)" : "var(--danger)";
+      } catch (e) { status.textContent = "✗ " + e.message; status.style.color = "var(--danger)"; }
+    };
     return h("div", { class: "store" + (x.active ? "" : " off") },
       h("div", { class: "row" },
         h("b", {}, x.name),
@@ -653,6 +669,7 @@ function storageCard() {
       meter(x.used_bytes, x.quota_bytes),
       h("div", { class: "row", style: { marginTop: "6px", gap: "4px" } },
         h("button", { class: "link", onclick: test }, "Tester"),
+        x.is_env ? "" : h("button", { class: "link", onclick: cors, title: "Autorise l'envoi des vidéos depuis cette page" }, "Configurer CORS"),
         h("button", { class: "link", onclick: () => { editing = editing === x ? null : x; render(); } }, editing === x ? "Fermer" : "Modifier"),
         x.is_env ? "" : h("button", { class: "link", onclick: async () => {
           if (!confirm(`Supprimer le stockage « ${x.name} » ? (impossible s'il contient encore des vidéos)`)) return;
