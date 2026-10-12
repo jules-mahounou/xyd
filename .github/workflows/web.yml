@@ -32,5 +32,6 @@ jobs:
           up web/index.html index.html
           up web/.htaccess .htaccess
           up web/logo.svg logo.svg
+          for f in robots.txt sitemap.xml site.webmanifest og-image.png apple-touch-icon.png icon-192.png icon-512.png; do up "web/$f" "$f"; done
           up web/admin/index.html admin/index.html
           echo "Site : https://xydhub.tech  ·  Admin : https://xydhub.tech/admin/"
