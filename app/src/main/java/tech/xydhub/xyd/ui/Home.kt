@@ -545,8 +545,8 @@ private fun ResumeMenuSheet(p: Playable, d: DownloadItem?, onDismiss: () -> Unit
                 }
             }
             MenuRow(if (d?.status == DlStatus.DONE) Icons.Filled.PlayArrow else XIcons.Download,
-                if (d?.status == DlStatus.DONE) "Lire" else "Télécharger / voir", onPlay)
-            MenuRow(Icons.Filled.Info, "Infos et épisodes", onInfo)
+                if (d?.status == DlStatus.DONE) "Lire" else "Télécharger / voir", onClick = onPlay)
+            MenuRow(Icons.Filled.Info, "Infos et épisodes", onClick = onInfo)
             MenuRow(Icons.Filled.Check, if (p.episode != null) "Marquer cet épisode comme vu" else "Marquer comme vu") {
                 Repo.markWatched(p); onDismiss()
             }
