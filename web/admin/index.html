@@ -87,6 +87,15 @@
   .cat-titles .it { display:flex; align-items:center; gap:8px; padding:4px 0; font-size:14px; }
   .cat-titles .it .rk { width:24px; color:var(--muted); font-weight:700; }
   .check { display:inline-flex; align-items:center; gap:6px; font-size:13px; color:var(--grey); }
+  .meter { height:6px; background:var(--line); border-radius:6px; overflow:hidden; margin-top:6px; }
+  .meter i { display:block; height:100%; background:var(--grey); }
+  .meter i.warn { background:#f5a524; }
+  .meter i.full { background:var(--danger); }
+  .store { border-top:1px solid var(--line); padding:12px 0; }
+  .store:first-of-type { border-top:0; }
+  .store .tag { font-size:11px; padding:1px 7px; border-radius:20px; border:1px solid var(--line); color:var(--muted); margin-left:6px; }
+  .store.off { opacity:.5; }
+  .sform { background:var(--card2); border:1px solid var(--line); border-radius:12px; padding:14px; margin-top:12px; }
   [hidden] { display:none !important; }
 </style>
 </head>
@@ -139,7 +148,12 @@ const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 const $ = (id) => document.getElementById(id);
 let titles = [];
 let categories = [];     // [{ id, name, sort, ranked, items: [title_id, …] }]
-let catsAvailable = true; // false tant que la migration « categories » n'est pas appliquée
+let catsAvailable = true;
+let storages = [];          // pool de stockages vidéo (table storage_backends)
+let storagesAvailable = true;
+let preferredStorage = "";  // "" = automatique, sinon id d'un stockage imposé
+let poolRender = null;
+const refreshPool = () => poolRender?.(); // false tant que la migration « categories » n'est pas appliquée
 let uploading = 0;
 
 // ---------------------------------------------------------------- utilitaires
@@ -200,25 +214,48 @@ async function r2(body) {
   }
   return data;
 }
-const r2Delete = (keys) => keys.filter(Boolean).length ? r2({ action: "delete", keys: keys.filter(Boolean) }).catch(fail) : null;
+/** Supprime des vidéos de leur stockage et libère l'espace réservé. items : [{ key, storage_id, size }]. */
+function storeDelete(items) {
+  const list = items.filter((it) => it && it.key);
+  if (!list.length) return null;
+  for (const it of list) {
+    const st = storages.find((x) => x.id === it.storage_id);
+    if (st) st.used_bytes = Math.max(0, st.used_bytes - (it.size || 0));
+  }
+  return r2({ action: "delete", items: list }).catch(fail);
+}
+const videoOf = (x) => x?.video_key ? { key: x.video_key, storage_id: x.storage_id, size: x.size_bytes } : null;
 
-/** Envoie un fichier directement dans R2 via une URL PUT pré-signée, avec progression. */
-async function uploadToR2(file, key, label) {
+/**
+ * Envoie un fichier directement dans le stockage choisi par le pool (URL PUT pré-signée), avec progression.
+ * Retourne l'id du stockage utilisé. L'espace est réservé côté serveur avant l'envoi et libéré en cas d'échec.
+ */
+async function uploadToStore(file, key, label) {
   const row = addUploadRow(label || file.name, file.size);
   uploading++;
+  let storageId = null;
   try {
-    const { url } = await r2({ action: "sign-upload", key });
-    await new Promise((res, rej) => {
+    const res = await r2({ action: "sign-upload", key, size: file.size, storage_id: preferredStorage || null });
+    storageId = res.storage_id;
+    const st = storages.find((x) => x.id === storageId);
+    if (st) { st.used_bytes += file.size; row.dest(st.name); refreshPool(); }
+    await new Promise((resolve, reject) => {
       const x = new XMLHttpRequest();
-      x.open("PUT", url);
+      x.open("PUT", res.url);
       x.upload.onprogress = (e) => e.lengthComputable && row.progress(e.loaded / e.total);
-      x.onload = () => (x.status >= 200 && x.status < 300 ? res() : rej(new Error(`R2 a refusé l'envoi (HTTP ${x.status})`)));
-      x.onerror = () => rej(new Error("Envoi interrompu (réseau ou CORS du bucket R2)"));
+      x.onload = () => (x.status >= 200 && x.status < 300 ? resolve() : reject(new Error(`Le stockage a refusé l'envoi (HTTP ${x.status})`)));
+      x.onerror = () => reject(new Error("Envoi interrompu (réseau ou CORS du bucket)"));
       x.send(file);
     });
     row.done();
+    return storageId;
   } catch (e) {
     row.fail(e.message);
+    if (storageId) {
+      const st = storages.find((x) => x.id === storageId);
+      if (st) { st.used_bytes = Math.max(0, st.used_bytes - file.size); refreshPool(); }
+      r2({ action: "release", storage_id: storageId, size: file.size }).catch(() => {});
+    }
     throw e;
   } finally {
     uploading--;
@@ -229,9 +266,11 @@ function addUploadRow(name, size) {
   $("uploads").hidden = false;
   const bar = h("i");
   const status = h("span", { class: "muted" }, "0 %");
-  const el = h("div", { class: "up" }, h("span", {}, name, " ", h("span", { class: "muted" }, fmtSize(size))), status, h("div", { class: "bar" }, bar));
+  const dest = h("span", { class: "muted" });
+  const el = h("div", { class: "up" }, h("span", {}, name, " ", h("span", { class: "muted" }, fmtSize(size)), dest), status, h("div", { class: "bar" }, bar));
   $("uplist").prepend(el);
   return {
+    dest(n) { dest.textContent = " → " + n; },
     progress(p) { bar.style.width = (p * 100).toFixed(1) + "%"; status.textContent = Math.floor(p * 100) + " %"; },
     done() { this.progress(1); el.classList.add("done"); status.textContent = "✓ envoyé"; setTimeout(() => { el.remove(); if (!$("uplist").children.length) $("uploads").hidden = true; }, 4000); },
     fail(m) { el.classList.add("fail"); bar.style.width = "100%"; status.textContent = "échec : " + m; },
@@ -272,6 +311,12 @@ async function load() {
     for (const s of t.seasons) s.episodes.sort((a, b) => a.number - b.number);
   }
   titles = data;
+
+  const st = await sb.from("storage_backends")
+    .select("id, name, provider, endpoint, region, bucket, is_env, quota_bytes, used_bytes, priority, active, created_at, access_key_vault, secret_key_vault")
+    .order("priority").order("created_at");
+  storagesAvailable = !st.error;
+  storages = st.data || [];
 
   const cats = await sb.from("categories")
     .select("id, name, sort, ranked, title_categories(title_id, position)")
@@ -323,6 +368,7 @@ function renderList() {
       h("button", { onclick: () => renderEditor(newTitle("serie")) }, "+ Série"),
       h("button", { onclick: () => renderEditor(newTitle("film")) }, "+ Film"),
     ),
+    storagesAvailable ? storageCard() : "",
     catsAvailable ? categoriesCard() : "",
     titles.length ? h("div", { class: "titles", style: { marginTop: "20px" } },
       titles.map((t) => h("div", { class: "tile", onclick: () => renderEditor(t) },
@@ -386,13 +432,14 @@ function renderEditor(t) {
     const [file] = files || await pickFiles("video/*,.mkv");
     if (!file) return;
     if (t._new) { pendingVideo = file; showVideoInfo(); return; }
+    if (!(await confirmPlan([file]))) return;
     try {
-      const old = t.video_key;
+      const old = videoOf(t);
       const key = `films/${slug(f.name.value || t.name)}-${t.id.slice(0, 8)}-${rand()}.${extOf(file)}`;
       const duration = await probeDuration(file);
-      await uploadToR2(file, key, t.name);
-      await save({ video_key: key, size_bytes: file.size, duration_s: duration || t.duration_s });
-      if (old && old !== key) r2Delete([old]);
+      const storageId = await uploadToStore(file, key, t.name);
+      await save({ video_key: key, storage_id: storageId, size_bytes: file.size, duration_s: duration || t.duration_s });
+      if (old && old.key !== key) storeDelete([old]);
       showVideoInfo(); toast("Vidéo remplacée");
     } catch (e) { fail(e); }
   };
@@ -411,14 +458,15 @@ function renderEditor(t) {
       if (t._new) {
         if (isFilm) {
           if (!pendingVideo) { saveBtn.disabled = false; return (err.textContent = "Choisis la vidéo du film."); }
+          if (!(await confirmPlan([pendingVideo]))) { saveBtn.disabled = false; return; }
           const key = `films/${slug(row.name)}-${t.id.slice(0, 8)}-${rand()}.${extOf(pendingVideo)}`;
           const duration = await probeDuration(pendingVideo);
-          await uploadToR2(pendingVideo, key, row.name);
-          Object.assign(row, { video_key: key, size_bytes: pendingVideo.size, duration_s: duration });
+          const storageId = await uploadToStore(pendingVideo, key, row.name);
+          Object.assign(row, { video_key: key, storage_id: storageId, size_bytes: pendingVideo.size, duration_s: duration });
           pendingVideo = null;
         }
         const { data, error } = await sb.from("titles").insert({ id: t.id, kind: t.kind, ...row }).select("*").single();
-        if (error) { if (row.video_key) r2Delete([row.video_key]); throw error; }
+        if (error) { if (row.video_key) storeDelete([videoOf(row)]); throw error; }
         Object.assign(t, data, { seasons: [] });
         delete t._new;
         titles.unshift(t);
@@ -434,11 +482,11 @@ function renderEditor(t) {
 
   const delBtn = !t._new && h("button", { class: "danger", onclick: async () => {
     const n = t.seasons.reduce((a, s) => a + s.episodes.length, 0);
-    if (!confirm(`Supprimer « ${t.name} »${n ? ` et ses ${n} épisodes` : ""} ? Les vidéos seront effacées de R2.`)) return;
-    const keys = [t.video_key, ...t.seasons.flatMap((s) => s.episodes.map((e) => e.video_key))];
+    if (!confirm(`Supprimer « ${t.name} »${n ? ` et ses ${n} épisodes` : ""} ? Les vidéos seront effacées du stockage.`)) return;
+    const vids = [videoOf(t), ...t.seasons.flatMap((s) => s.episodes.map(videoOf))];
     const { error } = await sb.from("titles").delete().eq("id", t.id);
     if (error) return fail(error);
-    r2Delete(keys);
+    storeDelete(vids);
     titles = titles.filter((x) => x !== t);
     toast("Supprimé");
     renderList();
@@ -486,6 +534,239 @@ function dropZone(text, onFiles, multiple) {
     if (files.length) onFiles(multiple ? files : files.slice(0, 1));
   };
   return z;
+}
+
+// ---------------------------------------------------------------- stockages (pool)
+const fmtBytes = (b) => !b ? "0 Go" : b >= 1e9 ? (b / 1e9).toFixed(2).replace(".", ",") + " Go" : Math.round(b / 1e6) + " Mo";
+const pct = (used, quota) => quota > 0 ? Math.round((used / quota) * 100) : 100;
+const PROVIDERS = { r2: "Cloudflare R2", b2: "Backblaze B2", s3: "Autre S3" };
+
+function meter(used, quota) {
+  const p = pct(used, quota);
+  return h("div", { class: "meter" }, h("i", { class: p >= 100 ? "full" : p >= 90 ? "warn" : "", style: { width: Math.min(100, p) + "%" } }));
+}
+
+/** Ordre de remplissage : stockages actifs, par priorité (ou celui imposé). */
+function fillOrder() {
+  return storages
+    .filter((x) => x.active && (!preferredStorage || x.id === preferredStorage))
+    .sort((a, b) => a.priority - b.priority || String(a.created_at).localeCompare(String(b.created_at)));
+}
+
+/** Simule la répartition d'un envoi (même algorithme que le serveur : premier stockage qui a la place). */
+function simulate(files) {
+  const pool = fillOrder().map((x) => ({ st: x, free: Math.max(0, x.quota_bytes - x.used_bytes), add: 0 }));
+  const missing = [];
+  for (const f of files) {
+    const slot = pool.find((p) => p.free >= f.size);
+    if (slot) { slot.free -= f.size; slot.add += f.size; } else missing.push(f);
+  }
+  return { slots: pool.filter((p) => p.add > 0), missing };
+}
+
+/** Affiche le plan d'envoi ; demande confirmation s'il y a un risque (débordement, stockage presque plein). */
+async function confirmPlan(files) {
+  if (!storagesAvailable || !storages.length) return true;
+  const total = files.reduce((a, f) => a + f.size, 0);
+  const { slots, missing } = simulate(files);
+  const lines = [`Envoi : ${files.length} fichier${files.length > 1 ? "s" : ""} · ${fmtBytes(total)}`];
+  const warns = [];
+  for (const sl of slots) {
+    const after = sl.st.used_bytes + sl.add;
+    const p = pct(after, sl.st.quota_bytes);
+    lines.push(`→ ${sl.st.name} : +${fmtBytes(sl.add)} (après : ${fmtBytes(after)} / ${fmtBytes(sl.st.quota_bytes)}, ${p} %)`);
+    if (p >= 90) warns.push(`⚠️ ${sl.st.name} sera rempli à ${p} %.`);
+  }
+  if (missing.length) {
+    warns.push(`⛔ ${missing.length} fichier${missing.length > 1 ? "s" : ""} (${fmtBytes(missing.reduce((a, f) => a + f.size, 0))}) ne rentre${missing.length > 1 ? "nt" : ""} dans aucun stockage : ${missing.length > 1 ? "ils échoueront" : "il échouera"}. Ajoute un stockage ou augmente un quota.`);
+  }
+  const act = fillOrder();
+  const poolUsed = act.reduce((a, x) => a + x.used_bytes, 0) + total;
+  const poolQuota = act.reduce((a, x) => a + x.quota_bytes, 0);
+  if (poolQuota && pct(poolUsed, poolQuota) >= 90) warns.push(`⚠️ Le pool sera rempli à ${pct(poolUsed, poolQuota)} % au total.`);
+  if (warns.length) return confirm([...lines, "", ...warns, "", "Continuer l'envoi ?"].join("\n"));
+  toast(lines.join(" · "), 4000);
+  return true;
+}
+
+function storageCard() {
+  const card = h("div", { class: "card" });
+  let editing = null; // null | "new" | storage
+
+  const render = () => {
+    const act = storages.filter((x) => x.active);
+    const used = act.reduce((a, x) => a + x.used_bytes, 0);
+    const quota = act.reduce((a, x) => a + x.quota_bytes, 0);
+    const dest = h("select", { style: { maxWidth: "220px" }, title: "Où envoyer les prochaines vidéos" },
+      h("option", { value: "" }, "Destination : automatique"),
+      ...storages.filter((x) => x.active).map((x) => h("option", { value: x.id, selected: x.id === preferredStorage }, "Uniquement : " + x.name)),
+    );
+    dest.onchange = () => { preferredStorage = dest.value; };
+    card.replaceChildren(
+      h("div", { class: "row" },
+        h("h3", { style: { flex: 1 } }, "Stockages vidéo"),
+        dest,
+        h("button", { class: "ghost", onclick: recompute, title: "Recalcule l'espace utilisé à partir des vidéos enregistrées" }, "Recalculer"),
+        h("button", { class: "ghost", onclick: () => { editing = "new"; render(); } }, "+ Stockage"),
+      ),
+      h("div", { style: { marginTop: "10px" } },
+        h("div", { class: "row", style: { fontSize: "14px" } },
+          h("span", { style: { flex: 1 } }, `Pool : ${fmtBytes(used)} / ${fmtBytes(quota)}`),
+          h("span", { class: "muted" }, `${pct(used, quota)} % · reste ${fmtBytes(Math.max(0, quota - used))}`)),
+        meter(used, quota),
+      ),
+      editing === "new" ? storageForm(null) : "",
+      h("div", { style: { marginTop: "8px" } }, ...storages.map((x) => storeRow(x))),
+    );
+  };
+  poolRender = render;
+
+  async function recompute() {
+    const { error } = await sb.rpc("recompute_storage_usage");
+    if (error) return fail(error);
+    const { data } = await sb.from("storage_backends").select("id, used_bytes");
+    for (const r of data || []) { const x = storages.find((y) => y.id === r.id); if (x) x.used_bytes = r.used_bytes; }
+    render(); toast("Espace recalculé");
+  }
+
+  function storeRow(x) {
+    const p = pct(x.used_bytes, x.quota_bytes);
+    const status = h("span", { class: "muted", style: { fontSize: "13px" } });
+    const test = async () => {
+      status.textContent = "Test…";
+      try {
+        const r = await r2({ action: "test", storage_id: x.id });
+        status.textContent = r.ok ? "✓ connexion OK" : "✗ " + r.error;
+        status.style.color = r.ok ? "var(--ok)" : "var(--danger)";
+      } catch (e) { status.textContent = "✗ " + e.message; status.style.color = "var(--danger)"; }
+    };
+    return h("div", { class: "store" + (x.active ? "" : " off") },
+      h("div", { class: "row" },
+        h("b", {}, x.name),
+        h("span", { class: "tag" }, PROVIDERS[x.provider] || x.provider),
+        x.is_env ? h("span", { class: "tag" }, "secrets GitHub") : "",
+        x.active ? "" : h("span", { class: "tag" }, "désactivé"),
+        h("span", { class: "tag" }, "priorité " + x.priority),
+        h("span", { style: { flex: 1 } }),
+        h("span", { class: "muted", style: { fontSize: "13px" } }, `${fmtBytes(x.used_bytes)} / ${fmtBytes(x.quota_bytes)} · ${p} %`),
+      ),
+      meter(x.used_bytes, x.quota_bytes),
+      h("div", { class: "row", style: { marginTop: "6px", gap: "4px" } },
+        h("button", { class: "link", onclick: test }, "Tester"),
+        h("button", { class: "link", onclick: () => { editing = editing === x ? null : x; render(); } }, editing === x ? "Fermer" : "Modifier"),
+        x.is_env ? "" : h("button", { class: "link", onclick: async () => {
+          if (!confirm(`Supprimer le stockage « ${x.name} » ? (impossible s'il contient encore des vidéos)`)) return;
+          const { error } = await sb.rpc("admin_delete_storage", { p_id: x.id });
+          if (error) return fail(error);
+          storages = storages.filter((y) => y !== x);
+          if (preferredStorage === x.id) preferredStorage = "";
+          render(); toast("Stockage supprimé");
+        } }, "Supprimer"),
+        status,
+      ),
+      editing === x ? storageForm(x) : "",
+    );
+  }
+
+  function storageForm(x) {
+    const isNew = !x;
+    const envOnly = x?.is_env;
+    const v = {
+      name: h("input", { type: "text", value: x?.name || "", placeholder: "ex : R2 compte 2, Backblaze…" }),
+      provider: h("select", {}, ...Object.entries(PROVIDERS).map(([k, l]) => h("option", { value: k, selected: (x?.provider || "r2") === k }, l))),
+      account: h("input", { type: "text", placeholder: "Account ID Cloudflare (32 caractères)" }),
+      endpoint: h("input", { type: "text", value: x?.endpoint || "", placeholder: "https://s3.eu-central-003.backblazeb2.com" }),
+      region: h("input", { type: "text", value: x?.region && x.region !== "auto" ? x.region : "", placeholder: "ex : eu-central-003 (auto pour R2)" }),
+      bucket: h("input", { type: "text", value: x?.bucket || "", placeholder: "nom du bucket" }),
+      ak: h("input", { type: "password", autocomplete: "off", placeholder: x?.access_key_vault ? "•••• enregistrée — vide = inchangée" : "Access Key ID / keyID" }),
+      sk: h("input", { type: "password", autocomplete: "off", placeholder: x?.secret_key_vault ? "•••• enregistrée — vide = inchangée" : "Secret Access Key / applicationKey" }),
+      quota: h("input", { type: "number", step: "0.1", min: "0.1", value: x ? (x.quota_bytes / 1e9).toFixed(1) : "9.5" }),
+      priority: h("input", { type: "number", value: x?.priority ?? (Math.max(0, ...storages.map((y) => y.priority)) + 1) }),
+      active: h("input", { type: "checkbox", checked: x ? x.active : true }),
+    };
+    // R2 : l'endpoint se déduit de l'Account ID.
+    const m = /^https:\/\/([0-9a-f]{32})\.r2\.cloudflarestorage\.com/i.exec(x?.endpoint || "");
+    if (m) v.account.value = m[1];
+    const err = h("div", { class: "err" });
+    const fields = h("div");
+    const layout = () => {
+      const pr = v.provider.value;
+      fields.replaceChildren(
+        envOnly ? h("p", { class: "muted", style: { fontSize: "13px" } }, "Stockage d'origine : ses clés sont dans les secrets GitHub (R2_*). Seuls le nom, le quota, la priorité et l'état se modifient ici.") : h("div", {},
+          h("label", {}, "Type"), v.provider,
+          pr === "r2" ? h("div", {}, h("label", {}, "Account ID Cloudflare"), v.account)
+                      : h("div", { class: "grid2" },
+                          h("div", {}, h("label", {}, "Endpoint S3"), v.endpoint),
+                          h("div", {}, h("label", {}, "Région"), v.region)),
+          h("label", {}, "Bucket"), v.bucket,
+          h("div", { class: "grid2" },
+            h("div", {}, h("label", {}, pr === "b2" ? "keyID" : "Access Key ID"), v.ak),
+            h("div", {}, h("label", {}, pr === "b2" ? "applicationKey" : "Secret Access Key"), v.sk)),
+        ),
+      );
+    };
+    v.provider.onchange = layout;
+    layout();
+
+    const save = h("button", { onclick: async () => {
+      err.textContent = "";
+      const pr = v.provider.value;
+      let endpoint = v.endpoint.value.trim().replace(/\/+$/, "");
+      let region = v.region.value.trim();
+      if (!envOnly && pr === "r2") {
+        const acct = v.account.value.trim();
+        if (!/^[0-9a-f]{32}$/i.test(acct)) return (err.textContent = "Account ID Cloudflare invalide (32 caractères hexadécimaux).");
+        endpoint = `https://${acct}.r2.cloudflarestorage.com`; region = "auto";
+      }
+      if (!envOnly && pr === "b2" && !region) {
+        const r = /s3\.([a-z0-9-]+)\.backblazeb2\.com/i.exec(endpoint); // la région est dans l'endpoint B2
+        if (r) region = r[1];
+      }
+      const name = v.name.value.trim();
+      const quotaBytes = Math.round(Number(v.quota.value) * 1e9);
+      if (!name) return (err.textContent = "Donne un nom à ce stockage.");
+      if (!(quotaBytes > 0)) return (err.textContent = "Quota invalide.");
+      if (!envOnly) {
+        if (!/^https:\/\//.test(endpoint)) return (err.textContent = "Endpoint invalide (doit commencer par https://).");
+        if (!v.bucket.value.trim()) return (err.textContent = "Nom du bucket obligatoire.");
+        if (isNew && (!v.ak.value.trim() || !v.sk.value.trim())) return (err.textContent = "Les deux clés sont obligatoires.");
+      }
+      save.disabled = true;
+      const { data: id, error } = await sb.rpc("admin_save_storage", {
+        p_id: x?.id || null, p_name: name, p_provider: envOnly ? x.provider : pr, p_endpoint: endpoint || null,
+        p_region: region || "auto", p_bucket: v.bucket.value.trim() || null,
+        p_access_key: v.ak.value.trim(), p_secret_key: v.sk.value.trim(),
+        p_quota_bytes: quotaBytes, p_priority: Number(v.priority.value) || 0, p_active: v.active.checked,
+      });
+      save.disabled = false;
+      if (error) return (err.textContent = error.message);
+      const { data } = await sb.from("storage_backends")
+        .select("id, name, provider, endpoint, region, bucket, is_env, quota_bytes, used_bytes, priority, active, created_at, access_key_vault, secret_key_vault")
+        .eq("id", id).single();
+      if (data) {
+        const i = storages.findIndex((y) => y.id === id);
+        i >= 0 ? (storages[i] = data) : storages.push(data);
+        storages.sort((a, b) => a.priority - b.priority || String(a.created_at).localeCompare(String(b.created_at)));
+      }
+      editing = null; render();
+      toast(isNew ? "Stockage ajouté — clique sur « Tester »" : "Stockage enregistré");
+    } }, isNew ? "Ajouter" : "Enregistrer");
+
+    return h("div", { class: "sform" },
+      h("label", {}, "Nom"), v.name,
+      fields,
+      h("div", { class: "grid2" },
+        h("div", {}, h("label", {}, "Quota (Go) — garde une marge sous la limite gratuite"), v.quota),
+        h("div", {}, h("label", {}, "Priorité (petit = rempli en premier)"), v.priority)),
+      h("label", { class: "check", style: { marginTop: "12px" } }, v.active, "Actif (reçoit de nouvelles vidéos)"),
+      h("div", { class: "row", style: { marginTop: "14px" } }, save,
+        h("button", { class: "ghost", onclick: () => { editing = null; render(); } }, "Annuler")),
+      err,
+    );
+  }
+
+  render();
+  return card;
 }
 
 // ---------------------------------------------------------------- catégories
@@ -686,6 +967,7 @@ function seasonsCard(t) {
 
     const addEpisodes = async (files) => {
       files.sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }));
+      if (!(await confirmPlan(files))) return;
       // Les envois partent l'un après l'autre ; chaque épisode est créé dès que sa vidéo est en ligne.
       for (const file of files) {
         const number = Math.max(0, ...s.episodes.map((e) => e.number)) + 1;
@@ -696,16 +978,17 @@ function seasonsCard(t) {
           const placeholder = { number, name: "…", _pending: true };
           s.episodes.push(placeholder);
           renderEps();
+          let storageId;
           try {
-            await uploadToR2(file, key, `${t.name} · S${pad(s.number)}E${pad(number)}`);
+            storageId = await uploadToStore(file, key, `${t.name} · S${pad(s.number)}E${pad(number)}`);
           } finally {
             s.episodes = s.episodes.filter((x) => x !== placeholder);
           }
           const { data, error } = await sb.from("episodes").insert({
             season_id: s.id, number, name: nameFromFile(file) || `Épisode ${number}`,
-            video_key: key, duration_s: duration, size_bytes: file.size,
+            video_key: key, storage_id: storageId, duration_s: duration, size_bytes: file.size,
           }).select("*").single();
-          if (error) { r2Delete([key]); throw error; }
+          if (error) { storeDelete([{ key, storage_id: storageId, size: file.size }]); throw error; }
           s.episodes.push(data);
           s.episodes.sort((a, b) => a.number - b.number);
           renderEps();
@@ -717,7 +1000,7 @@ function seasonsCard(t) {
       if (!confirm(`Supprimer ${s.name || "la saison " + s.number} et ses ${s.episodes.length} épisodes ?`)) return;
       const { error } = await sb.from("seasons").delete().eq("id", s.id);
       if (error) return fail(error);
-      r2Delete(s.episodes.map((e) => e.video_key));
+      storeDelete(s.episodes.map(videoOf));
       t.seasons = t.seasons.filter((x) => x !== s);
       render();
     } }, "Supprimer");
@@ -752,7 +1035,7 @@ function seasonsCard(t) {
       if (!confirm(`Supprimer l'épisode ${e.number} « ${e.name} » ?`)) return;
       const { error } = await sb.from("episodes").delete().eq("id", e.id);
       if (error) return fail(error);
-      r2Delete([e.video_key]);
+      storeDelete([videoOf(e)]);
       s.episodes = s.episodes.filter((x) => x !== e);
       rerender();
     } }, "✕");

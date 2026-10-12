@@ -1,10 +1,11 @@
 // Edge Function : renvoie une URL signée (temporaire) vers une vidéo du bucket Cloudflare R2.
 // L'utilisateur doit être connecté ; la lecture du catalogue passe par la RLS avec SON jeton.
 //
-// Secrets requis : R2_ACCOUNT_ID, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY, R2_BUCKET
+// Secrets requis (stockage d'origine) : R2_ACCOUNT_ID, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY, R2_BUCKET
+// Les autres stockages du pool sont lus dans la table storage_backends (clés dans Vault).
 // Optionnel : R2_URL_TTL (secondes, défaut 21600 = 6 h)
 import { createClient } from "jsr:@supabase/supabase-js@2";
-import { presign } from "../_shared/r2.ts";
+import { backend, presign } from "../_shared/storage.ts";
 
 const TTL = Number(Deno.env.get("R2_URL_TTL") ?? "21600");
 
@@ -30,14 +31,19 @@ Deno.serve(async (req) => {
   } catch { /* corps invalide */ }
   if (!/^[0-9a-f-]{36}$/i.test(mediaId)) return json({ error: "media_id invalide" }, 400);
 
-  // Épisode, sinon film.
-  const ep = await supabase.from("episodes").select("video_key").eq("id", mediaId).maybeSingle();
-  let key: string | null = ep.data?.video_key ?? null;
-  if (!key) {
-    const film = await supabase.from("titles").select("video_key").eq("id", mediaId).eq("kind", "film").maybeSingle();
-    key = film.data?.video_key ?? null;
+  // Épisode, sinon film. `storage_id` désigne le stockage du pool qui contient la vidéo.
+  const ep = await supabase.from("episodes").select("video_key, storage_id").eq("id", mediaId).maybeSingle();
+  let row: { video_key: string | null; storage_id: string | null } | null = ep.data;
+  if (!row?.video_key) {
+    const film = await supabase.from("titles").select("video_key, storage_id").eq("id", mediaId).eq("kind", "film").maybeSingle();
+    row = film.data;
   }
-  if (!key) return json({ error: "Vidéo introuvable" }, 404);
+  if (!row?.video_key) return json({ error: "Vidéo introuvable" }, 404);
 
-  return json({ url: await presign(key, "GET", TTL), expires_in: TTL });
+  try {
+    const b = await backend(row.storage_id);
+    return json({ url: await presign(b, row.video_key, "GET", TTL), expires_in: TTL });
+  } catch (e) {
+    return json({ error: (e as Error).message }, 500);
+  }
 });
