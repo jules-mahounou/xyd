@@ -169,8 +169,8 @@ fun HomeScreen(onPlay: (String) -> Unit) {
                     Text(
                         label,
                         Modifier.clip(RoundedCornerShape(18.dp))
-                            .background(if (on) Xyd.Grey else Color(0x33000000))
-                            .border(1.dp, if (on) Xyd.Grey else Color(0x66FFFFFF), RoundedCornerShape(18.dp))
+                            .background(if (on) Xyd.Grey else Xyd.Card)
+                            .border(1.dp, if (on) Xyd.Grey else Xyd.Line, RoundedCornerShape(18.dp))
                             .clickable { filter = if (on && key != F_ALL) F_ALL else key }
                             .padding(horizontal = 14.dp, vertical = 7.dp),
                         color = if (on) Xyd.Black else Color.White, fontSize = 13.sp, fontWeight = FontWeight.Medium,
@@ -187,15 +187,19 @@ fun HomeScreen(onPlay: (String) -> Unit) {
                     item { header() }
                     item { SkeletonHome() }
                 }
-                hero.isNotEmpty() -> item(key = "hero-$filter") {
+                hero.isNotEmpty() -> {
+                    item(key = "hero-$filter") {
                     Hero(
-                        titles = hero, downloads = downloads, header = header, chips = chips,
+                        titles = hero, downloads = downloads, header = header,
                         onInfo = { sheet = it.id },
                         onAction = { t ->
                             val target = Repo.resumeTarget(t) ?: return@Hero
                             primaryAction(target, downloads[target.mediaId], onPlay, download)
                         },
                     )
+                    }
+                    // Filtres sous la bannière (plus par-dessus l'image).
+                    item(key = "chips") { chips() }
                 }
                 else -> {
                     item { header() }
@@ -309,7 +313,6 @@ private fun Hero(
     titles: List<Title>,
     downloads: Map<String, DownloadItem>,
     header: @Composable () -> Unit,
-    chips: @Composable () -> Unit,
     onInfo: (Title) -> Unit,
     onAction: (Title) -> Unit,
 ) {
@@ -337,7 +340,6 @@ private fun Hero(
         }
         Column(Modifier.align(Alignment.TopStart).fillMaxWidth()) {
             header()
-            chips()
         }
         if (titles.size > 1) {
             Row(Modifier.align(Alignment.BottomCenter).padding(bottom = 6.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
