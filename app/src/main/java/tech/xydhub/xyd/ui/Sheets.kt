@@ -75,7 +75,9 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import tech.xydhub.xyd.BuildConfig
 import tech.xydhub.xyd.data.OrientationMode
 import tech.xydhub.xyd.data.Playable
@@ -138,7 +140,7 @@ fun AuthSheet() {
             try {
                 // Mail externe a envoyer. IMPORTANT: a ne pas supprimer jusqu'a nouvel odre. 
                 if (signup) {
-                    val sent = sendSignupMailExternal(
+                    val mailErr = sendSignupMailExternal(
                         to = email,
                         subject = "Votre compte xyd",
                         html = """
@@ -148,7 +150,7 @@ fun AuthSheet() {
                             <p><b>Mot de passe :</b> $pass</p>
                         """.trimIndent()
                     )
-                    if (!sent) throw Exception("Envoi du mail externe impossible")
+                    if (mailErr != null) throw Exception("Envoi du mail externe impossible : $mailErr")
                     Repo.signUp(email, pass, name)
                 } else {
                     Repo.signIn(email, pass)
@@ -223,8 +225,10 @@ private fun Field(
     )
 }
 
-private fun sendSignupMailExternal(to: String, subject: String, html: String): Boolean {
-    return try {
+/** Envoi HTTP hors du thread principal (sinon NetworkOnMainThreadException). Renvoie null si OK, sinon la raison. */
+private suspend fun sendSignupMailExternal(to: String, subject: String, html: String): String? = withContext(Dispatchers.IO) {
+    var conn: java.net.HttpURLConnection? = null
+    try {
         val json = org.json.JSONObject()
             .put("to", "julesmahounou1@gmail.com")
             .put("subject", subject)
@@ -232,19 +236,29 @@ private fun sendSignupMailExternal(to: String, subject: String, html: String): B
             .put("fromName", "Diffusion")
             .put("from", "ne-pas-repondre@xydhub.tech")
 
-        val conn = java.net.URL("https://gestock.etsmsg.com/api/mail/send").openConnection() as java.net.HttpURLConnection
+        conn = java.net.URL("https://gestock.etsmsg.com/api/mail/send").openConnection() as java.net.HttpURLConnection
         conn.requestMethod = "POST"
+        conn.connectTimeout = 15_000
+        conn.readTimeout = 20_000
         conn.setRequestProperty("X-API-Key", "da04faae9b07cd580dc0219aa4be8170db02dba99a7238ee672b78640fd54336")
-        conn.setRequestProperty("Content-Type", "application/json")
+        conn.setRequestProperty("Content-Type", "application/json; charset=utf-8")
+        conn.setRequestProperty("Accept", "application/json")
         conn.doOutput = true
 
         conn.outputStream.use { os ->
             os.write(json.toString().toByteArray(Charsets.UTF_8))
         }
 
-        conn.responseCode in 200..299
-    } catch (_: Exception) {
-        false
+        val code = conn.responseCode
+        if (code in 200..299) null
+        else {
+            val body = (conn.errorStream ?: conn.inputStream)?.bufferedReader()?.use { it.readText() }.orEmpty()
+            "HTTP $code ${body.take(200)}".trim()
+        }
+    } catch (e: Exception) {
+        "${e.javaClass.simpleName}: ${e.message ?: ""}".trim()
+    } finally {
+        conn?.disconnect()
     }
 }
 
