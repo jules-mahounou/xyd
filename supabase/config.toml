@@ -7,3 +7,9 @@ verify_jwt = false
 
 [functions.admin-r2]
 verify_jwt = false
+
+[functions.notify-signup]
+verify_jwt = false
+
+[functions.admin-users]
+verify_jwt = false

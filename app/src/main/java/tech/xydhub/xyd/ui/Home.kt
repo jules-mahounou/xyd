@@ -100,6 +100,7 @@ fun HomeScreen(onPlay: (String) -> Unit) {
     val hidden by Repo.hiddenResume.collectAsStateWithLifecycle()
     val loading by Repo.loading.collectAsStateWithLifecycle()
     val error by Repo.error.collectAsStateWithLifecycle()
+    val accountStatus by Repo.accountStatus.collectAsStateWithLifecycle()
     val downloads by Downloads.items.collectAsStateWithLifecycle()
 
     // Valeur = id d'un titre, ou SHEET_DOWNLOADS / SHEET_SETTINGS.
@@ -303,7 +304,46 @@ fun HomeScreen(onPlay: (String) -> Unit) {
         } ?: run { sheet = null }
     }
 
-    if (session == null) AuthSheet()
+    if (session == null) {
+        AuthSheet()
+    } else if (accountStatus == "pending" || accountStatus == "blocked") {
+        AccountGate(accountStatus!!)
+    }
+}
+
+/** Compte en attente de validation ou suspendu : écran verrouillé avec actualisation. */
+@Composable
+private fun AccountGate(status: String) {
+    val loading by Repo.loading.collectAsStateWithLifecycle()
+    XSheet(onDismiss = {}, locked = true) {
+        Column(
+            Modifier.fillMaxWidth().navigationBarsPadding().padding(24.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            Logo(52.dp)
+            Spacer(Modifier.height(16.dp))
+            Text(
+                if (status == "pending") "Compte en attente" else "Accès suspendu",
+                fontSize = 22.sp, fontWeight = FontWeight.SemiBold,
+            )
+            Text(
+                if (status == "pending") "Ton inscription est bien reçue. L'administrateur doit valider ton compte avant que tu puisses regarder."
+                else "Ton accès à xyd a été suspendu par l'administrateur.",
+                color = Xyd.Grey, fontSize = 14.sp, textAlign = TextAlign.Center, lineHeight = 20.sp,
+                modifier = Modifier.padding(top = 10.dp),
+            )
+            Spacer(Modifier.height(24.dp))
+            Button(
+                onClick = { Repo.refresh() }, enabled = !loading,
+                modifier = Modifier.fillMaxWidth().height(50.dp), shape = RoundedCornerShape(12.dp),
+                colors = ButtonDefaults.buttonColors(containerColor = Xyd.Grey, contentColor = Xyd.Black),
+            ) { Text(if (loading) "Vérification…" else "Actualiser", fontWeight = FontWeight.SemiBold) }
+            OutlinedButton(
+                onClick = { Repo.signOut() }, modifier = Modifier.fillMaxWidth().padding(top = 10.dp),
+                shape = RoundedCornerShape(12.dp),
+            ) { Text("Se déconnecter", color = Xyd.Grey) }
+        }
+    }
 }
 
 // ---------------------------------------------------------------- Bannière « à la une »

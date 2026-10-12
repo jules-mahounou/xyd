@@ -34,6 +34,8 @@ object Repo {
     private val _categories = MutableStateFlow<List<Category>>(emptyList())
     val categories: StateFlow<List<Category>> = _categories
     val loading = MutableStateFlow(false)
+    /** "pending" / "blocked" : l'accueil affiche un écran dédié au lieu du catalogue. */
+    val accountStatus = MutableStateFlow<String?>(null)
     val error = MutableStateFlow<String?>(null)
 
     private val _progress = MutableStateFlow<Map<String, Progress>>(emptyMap())
@@ -98,6 +100,7 @@ object Repo {
             Supabase.signOut(s)
         }
         saveSession(null)
+        accountStatus.value = null
         _progress.value = emptyMap()
         dirty.clear()
         prefs.edit().remove("progress").apply()
@@ -118,6 +121,7 @@ object Repo {
         scope.launch {
             loading.value = true
             try {
+                _session.value?.let { s -> runCatching { accountStatus.value = Supabase.myStatus(s.userId) } }
                 val json = Supabase.fetchCatalog()
                 _catalog.value = Parse.catalog(json)
                 error.value = null

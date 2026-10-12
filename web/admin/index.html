@@ -96,6 +96,22 @@
   .store .tag { font-size:11px; padding:1px 7px; border-radius:20px; border:1px solid var(--line); color:var(--muted); margin-left:6px; }
   .store.off { opacity:.5; }
   .sform { background:var(--card2); border:1px solid var(--line); border-radius:12px; padding:14px; margin-top:12px; }
+  .card.coll > .row:first-child h3 { cursor:pointer; user-select:none; }
+  .card.coll > .row:first-child h3::before { content:"▸"; display:inline-block; width:18px; color:var(--muted); transition:transform .15s; }
+  .card.coll.open > .row:first-child h3::before { transform:rotate(90deg); }
+  .card.coll:not(.open) > :not(:first-child) { display:none; }
+  .card.coll:not(.open) > .row:first-child > :not(h3):not(.sum) { display:none; }
+  .card.coll .sum { color:var(--muted); font-size:13px; }
+  .card.coll.open .sum { display:none; }
+  .user { display:flex; align-items:center; gap:10px; padding:10px 0; border-top:1px solid var(--line); flex-wrap:wrap; }
+  .user:first-of-type { border-top:0; }
+  .user .who { flex:1; min-width:180px; }
+  .user .who small { display:block; color:var(--muted); font-size:12px; }
+  .st { font-size:11px; padding:2px 8px; border-radius:20px; border:1px solid var(--line); }
+  .st.active { color:var(--ok); border-color:#1f3b25; }
+  .st.pending { color:#f5a524; border-color:#4a3a14; }
+  .st.blocked { color:var(--danger); border-color:#3a1d1e; }
+  .fields { display:flex; gap:14px; flex-wrap:wrap; margin-top:6px; }
   [hidden] { display:none !important; }
 </style>
 </head>
@@ -153,6 +169,9 @@ let storages = [];          // pool de stockages vidéo (table storage_backends)
 let storagesAvailable = true;
 let preferredStorage = "";  // "" = automatique, sinon id d'un stockage imposé
 let poolRender = null;
+let users = [];             // profils (table profiles)
+let signupSettings = null;  // app_settings.signup
+let usersAvailable = true;
 const refreshPool = () => poolRender?.(); // false tant que la migration « categories » n'est pas appliquée
 let uploading = 0;
 
@@ -318,6 +337,12 @@ async function load() {
   storagesAvailable = !st.error;
   storages = st.data || [];
 
+  const us = await sb.from("profiles").select("*").order("created_at", { ascending: false });
+  usersAvailable = !us.error;
+  users = us.data || [];
+  const ss = await sb.from("app_settings").select("value").eq("key", "signup").maybeSingle();
+  signupSettings = ss.data?.value || { require_approval: false, notify: true, recipient: null, fields: ["name", "email", "created_at", "status"] };
+
   const cats = await sb.from("categories")
     .select("id, name, sort, ranked, title_categories(title_id, position)")
     .order("sort").order("created_at");
@@ -368,8 +393,14 @@ function renderList() {
       h("button", { onclick: () => renderEditor(newTitle("serie")) }, "+ Série"),
       h("button", { onclick: () => renderEditor(newTitle("film")) }, "+ Film"),
     ),
-    storagesAvailable ? storageCard() : "",
-    catsAvailable ? categoriesCard() : "",
+    usersAvailable ? collapsible(usersCard(), "users", users.some((u) => u.status === "pending"),
+      () => { const n = users.filter((u) => u.status === "pending").length; return `${users.length} compte${users.length > 1 ? "s" : ""}${n ? ` · ${n} en attente` : ""}`; }) : "",
+    storagesAvailable ? collapsible(storageCard(), "storage", false, () => {
+      const act = storages.filter((x) => x.active);
+      const u = act.reduce((a, x) => a + x.used_bytes, 0), q = act.reduce((a, x) => a + x.quota_bytes, 0);
+      return `${fmtBytes(u)} / ${fmtBytes(q)} · ${pct(u, q)} %`;
+    }) : "",
+    catsAvailable ? collapsible(categoriesCard(), "cats", false, () => `${categories.length} catégorie${categories.length > 1 ? "s" : ""}`) : "",
     titles.length ? h("div", { class: "titles", style: { marginTop: "20px" } },
       titles.map((t) => h("div", { class: "tile", onclick: () => renderEditor(t) },
         h("div", { class: "poster", style: t.poster_url ? { backgroundImage: `url("${t.poster_url}")` } : {} },
@@ -537,6 +568,143 @@ function dropZone(text, onFiles, multiple) {
     if (files.length) onFiles(multiple ? files : files.slice(0, 1));
   };
   return z;
+}
+
+// ---------------------------------------------------------------- panneaux repliables
+/**
+ * Rend une carte repliable : clic sur son titre (h3). L'état est mémorisé dans le navigateur.
+ * `summary()` affiche un résumé à côté du titre quand la carte est fermée.
+ */
+function collapsible(card, id, defaultOpen, summary) {
+  card.classList.add("coll");
+  let open = defaultOpen;
+  try { const v = localStorage.getItem("xyd.panel." + id); if (v !== null) open = v === "1"; } catch {}
+  card.classList.toggle("open", open);
+  const decorate = () => {
+    const head = card.firstElementChild;
+    if (!head || head.querySelector(".sum")) return;
+    const h3 = head.querySelector("h3");
+    if (h3 && summary) h3.after(h("span", { class: "sum" }, summary()));
+  };
+  decorate();
+  new MutationObserver(decorate).observe(card, { childList: true });
+  card.addEventListener("click", (e) => {
+    if (!e.target.closest(".row:first-child > h3")) return;
+    open = !card.classList.contains("open");
+    card.classList.toggle("open", open);
+    try { localStorage.setItem("xyd.panel." + id, open ? "1" : "0"); } catch {}
+  });
+  return card;
+}
+
+// ---------------------------------------------------------------- utilisateurs
+const STATUS_LABEL = { active: "actif", pending: "en attente", blocked: "suspendu" };
+const FIELD_LABEL = { name: "Nom", email: "Email", created_at: "Date d'inscription", status: "Statut", user_id: "Identifiant" };
+
+async function usersFn(body) {
+  const { data, error } = await sb.functions.invoke("admin-users", { body });
+  if (error) {
+    let msg = error.message;
+    try { msg = (await error.context.json()).error || msg; } catch {}
+    throw new Error(msg);
+  }
+  return data;
+}
+
+function usersCard() {
+  const card = h("div", { class: "card" });
+  const me = $("who").textContent;
+
+  async function saveSettings(patch) {
+    const value = { ...signupSettings, ...patch };
+    const { error } = await sb.from("app_settings").upsert({ key: "signup", value });
+    if (error) return fail(error);
+    signupSettings = value;
+    toast("Réglage enregistré");
+  }
+
+  async function setStatus(u, status) {
+    const { error } = await sb.from("profiles").update({ status }).eq("user_id", u.user_id);
+    if (error) return fail(error);
+    u.status = status;
+    render();
+    toast(status === "active" ? "Compte activé" : status === "blocked" ? "Compte suspendu" : "Compte mis en attente");
+  }
+
+  const render = () => {
+    const st = signupSettings;
+    const approval = h("input", { type: "checkbox", checked: !!st.require_approval });
+    approval.onchange = () => saveSettings({ require_approval: approval.checked });
+    const notify = h("input", { type: "checkbox", checked: st.notify !== false });
+    notify.onchange = () => saveSettings({ notify: notify.checked });
+    const recipient = h("input", { type: "email", value: st.recipient || "", placeholder: "ton adresse mail", style: { maxWidth: "280px" } });
+    recipient.onchange = () => saveSettings({ recipient: recipient.value.trim() || null });
+    const fields = h("div", { class: "fields" }, ...Object.entries(FIELD_LABEL).map(([k, label]) => {
+      const c = h("input", { type: "checkbox", checked: (st.fields || []).includes(k) });
+      c.onchange = () => {
+        const set = new Set(signupSettings.fields || []);
+        c.checked ? set.add(k) : set.delete(k);
+        saveSettings({ fields: Object.keys(FIELD_LABEL).filter((x) => set.has(x)) });
+      };
+      return h("label", { class: "check" }, c, label);
+    }));
+    const testStatus = h("span", { class: "muted", style: { fontSize: "13px" } });
+    const test = h("button", { class: "ghost", onclick: async () => {
+      testStatus.textContent = "Envoi…"; testStatus.style.color = "";
+      try {
+        const { data, error } = await sb.functions.invoke("notify-signup", { body: { test: true } });
+        if (error) throw error;
+        testStatus.textContent = data.ok ? "✓ mail envoyé" : "✗ " + data.error;
+        testStatus.style.color = data.ok ? "var(--ok)" : "var(--danger)";
+      } catch (e) { testStatus.textContent = "✗ " + e.message; testStatus.style.color = "var(--danger)"; }
+    } }, "Envoyer un mail de test");
+
+    card.replaceChildren(
+      h("div", { class: "row" }, h("h3", { style: { flex: 1 } }, "Utilisateurs")),
+      h("div", { class: "sform", style: { marginTop: "12px" } },
+        h("b", {}, "Inscriptions"),
+        h("label", { class: "check", style: { display: "flex", marginTop: "10px" } }, approval,
+          "Valider manuellement chaque nouveau compte (il reste « en attente » jusqu'à ton accord)"),
+        h("label", { class: "check", style: { display: "flex", marginTop: "8px" } }, notify, "M'envoyer un mail à chaque inscription"),
+        h("label", {}, "Destinataire"), recipient,
+        h("label", {}, "Informations dans le mail"), fields,
+        h("div", { class: "row", style: { marginTop: "12px" } }, test, testStatus),
+        h("p", { class: "muted", style: { fontSize: "12px", marginTop: "10px" } },
+          "Les mots de passe ne sont jamais envoyés ni conservés en clair. Pour un proche, utilise « Mot de passe » ci-dessous : tu le choisis et tu le lui donnes."),
+      ),
+      h("div", { style: { marginTop: "8px" } }, ...users.map((u) => userRow(u))),
+    );
+  };
+
+  function userRow(u) {
+    const self = u.email === me;
+    const date = new Date(u.created_at).toLocaleDateString("fr-FR", { day: "2-digit", month: "short", year: "numeric" });
+    return h("div", { class: "user" },
+      h("div", { class: "who" }, h("b", {}, u.name || "—"), self ? h("span", { class: "muted" }, " (toi)") : "", h("small", {}, `${u.email} · ${date}`)),
+      h("span", { class: "st " + u.status }, STATUS_LABEL[u.status] || u.status),
+      u.status === "pending" ? h("button", { onclick: () => setStatus(u, "active") }, "Valider") : "",
+      !self && u.status === "active" ? h("button", { class: "link", onclick: () => setStatus(u, "blocked") }, "Suspendre") : "",
+      !self && u.status === "blocked" ? h("button", { class: "link", onclick: () => setStatus(u, "active") }, "Réactiver") : "",
+      h("button", { class: "link", title: "Choisir un nouveau mot de passe pour ce compte", onclick: async () => {
+        const pw = prompt(`Nouveau mot de passe pour ${u.email} (6 caractères minimum) :`);
+        if (!pw) return;
+        if (pw.length < 6) return toast("6 caractères minimum");
+        if (prompt("Confirme le mot de passe :") !== pw) return toast("Les deux saisies ne correspondent pas");
+        try { await usersFn({ action: "set-password", user_id: u.user_id, password: pw }); toast("Mot de passe modifié"); }
+        catch (e) { fail(e); }
+      } }, "Mot de passe"),
+      !self ? h("button", { class: "link", style: { color: "var(--danger)" }, onclick: async () => {
+        if (!confirm(`Supprimer définitivement le compte ${u.email} ? Sa progression de lecture sera effacée.`)) return;
+        try {
+          await usersFn({ action: "delete", user_id: u.user_id });
+          users = users.filter((x) => x !== u); render(); toast("Compte supprimé");
+        } catch (e) { fail(e); }
+      } }, "Supprimer") : "",
+    );
+  }
+
+  render();
+  return card;
 }
 
 // ---------------------------------------------------------------- stockages (pool)

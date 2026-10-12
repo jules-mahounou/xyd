@@ -24,6 +24,8 @@ Deno.serve(async (req) => {
   });
   const { data: user, error: authError } = await supabase.auth.getUser(token);
   if (authError || !user?.user) return json({ error: "Session expirée" }, 401);
+  const { data: active } = await supabase.rpc("is_active");
+  if (active === false) return json({ error: "Accès suspendu ou en attente de validation" }, 403);
 
   let mediaId = "";
   try {

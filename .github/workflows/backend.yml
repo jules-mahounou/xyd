@@ -36,6 +36,8 @@ jobs:
             echo "→ $f"
             q < "$f" > /dev/null || { echo "::error::Échec de $f (le jeton doit avoir l'accès base de données en écriture)"; exit 1; }
           done
+          # URL des Edge Functions, utilisée par le trigger d'inscription (pg_net).
+          printf "insert into public.app_settings (key, value) values ('functions', jsonb_build_object('url', 'https://%s.supabase.co/functions/v1')) on conflict (key) do update set value = excluded.value;" "$PROJECT_REF" | q > /dev/null
           if [ -n "$ADMIN_EMAIL" ]; then
             printf "insert into public.admins (user_id) select id from auth.users where lower(email) = lower('%s') on conflict do nothing; select count(*) as admins from public.admins;" \
               "${ADMIN_EMAIL//\'/}" | q
@@ -56,7 +58,22 @@ jobs:
             R2_ACCOUNT_ID="$R2_ACCOUNT_ID" R2_ACCESS_KEY_ID="$R2_ACCESS_KEY_ID" \
             R2_SECRET_ACCESS_KEY="$R2_SECRET_ACCESS_KEY" R2_BUCKET="$R2_BUCKET"
 
+      - name: Secrets SMTP (mail d'inscription)
+        env:
+          SMTP_HOST: ${{ secrets.SMTP_HOST || vars.SMTP_HOST }}
+          SMTP_PORT: ${{ secrets.SMTP_PORT || vars.SMTP_PORT || '465' }}
+          SMTP_USER: ${{ secrets.SMTP_USER || vars.SMTP_USER }}
+          SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
+          SMTP_FROM: ${{ vars.SMTP_FROM }}
+        run: |
+          if [ -z "$SMTP_HOST" ] || [ -z "$SMTP_PASSWORD" ]; then echo "::warning::Secrets SMTP absents : pas de mail d'inscription."; exit 0; fi
+          ARGS=(SMTP_HOST="$SMTP_HOST" SMTP_PORT="$SMTP_PORT" SMTP_USER="$SMTP_USER" SMTP_PASSWORD="$SMTP_PASSWORD")
+          [ -n "$SMTP_FROM" ] && ARGS+=(SMTP_FROM="$SMTP_FROM")
+          supabase secrets set --project-ref "$PROJECT_REF" "${ARGS[@]}"
+
       - name: Déployer les Edge Functions
         run: |
           supabase functions deploy video-url --project-ref "$PROJECT_REF" --no-verify-jwt
           supabase functions deploy admin-r2 --project-ref "$PROJECT_REF" --no-verify-jwt
+          supabase functions deploy notify-signup --project-ref "$PROJECT_REF" --no-verify-jwt
+          supabase functions deploy admin-users --project-ref "$PROJECT_REF" --no-verify-jwt
