@@ -366,17 +366,14 @@ private fun HeroInfo(
     val target = remember(t, progress) { Repo.resumeTarget(t) }
     val d = target?.let { downloads[it.mediaId] }
     Column(modifier.fillMaxWidth().padding(start = 24.dp, end = 24.dp, bottom = 28.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-        Text(
-            t.name, color = Color.White, fontSize = 30.sp, fontWeight = FontWeight.Bold, textAlign = TextAlign.Center,
-            maxLines = 2, overflow = TextOverflow.Ellipsis, lineHeight = 34.sp,
-        )
+        // Pas de nom ici : l'affiche le contient déjà.
         val meta = listOfNotNull(
             if (t.isFilm) "Film" else "Série",
             t.year.takeIf { it > 0 }?.toString(),
             if (t.isFilm) fmtDuration(t.durationS).ifBlank { null }
             else "${t.seasons.size} saison${if (t.seasons.size > 1) "s" else ""}",
         )
-        Text(meta.joinToString(" · "), color = Xyd.Grey, fontSize = 13.sp, modifier = Modifier.padding(top = 6.dp))
+        Text(meta.joinToString(" · "), color = Xyd.Grey, fontSize = 13.sp)
         Spacer(Modifier.height(16.dp))
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
             val pos = target?.let { progress[it.mediaId] }
