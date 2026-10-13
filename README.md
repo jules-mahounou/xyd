@@ -9,6 +9,17 @@ Application Android privée (Kotlin + Jetpack Compose + Supabase + Cloudflare R2
 - **Mise à jour forcée** : l'app se bloque tant que la nouvelle version n'est pas installée.
 - **APK ≈ 1,4 Mo** (limite de 10 Mo vérifiée par la CI, le build échoue au-delà).
 
+## Limitation des téléchargements (quotas gratuits)
+
+Chaque demande de vidéo passe par `grant_download()` (migration `download_limits`), appelée par l'Edge Function `video-url` :
+
+1. **Stockage** : budget journalier (UTC) par stockage facturable (B2, S3 tiers) en octets sortants et transactions classe B/C, avec marge sous la limite gratuite. Les buckets d'un même compte partagent le budget (« compte de facturation »). R2 = sortie gratuite, non limité.
+2. **Personne** : quota en durée de vidéo par jour et par mois, nombre de vidéos par jour, anti-rafale. La première vidéo du jour passe toujours.
+3. **Équité** : une personne ne prend pas plus de 50 % du budget d'un stockage facturable, sauf dans les 3 dernières heures du jour UTC.
+4. **Gros consommateurs** : au-delà de 3 × la médiane sur 7 jours (et 15 h minimum), quota journalier divisé par 2.
+
+Les reprises d'une même vidéo le même jour ne sont pas recomptées. Refus = HTTP 429 avec `retry_at` : l'app met le téléchargement en pause et le relance seule après le renouvellement. Tout se règle dans l'admin (carte « Téléchargements » et formulaire de chaque stockage).
+
 ## Arborescence
 
 | Dossier | Contenu |

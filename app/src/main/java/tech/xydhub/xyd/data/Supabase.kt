@@ -142,12 +142,34 @@ object Supabase {
         )
     }
 
-    /** URL signée R2 (valable quelques heures) générée par l'Edge Function `video-url`. */
-    suspend fun videoUrl(mediaId: String): String {
-        val body = JSONObject().put("media_id", mediaId).toString()
-        val json = JSONObject(authedOk("/functions/v1/video-url", "POST", body))
-        return json.optString("url").ifBlank { throw IOException("URL vidéo absente") }
+    /** Refus de la limitation serveur (quota du jour, budget d'un stockage…) : réessayer à `retryAt`. */
+    class QuotaException(message: String, val retryAt: Long) : IOException(message)
+
+    /**
+     * URL signée (valable quelques heures) générée par l'Edge Function `video-url`.
+     * `offset` = octets déjà téléchargés : une reprise n'est pas recomptée dans le quota.
+     */
+    suspend fun videoUrl(mediaId: String, offset: Long): String {
+        val body = JSONObject().put("media_id", mediaId).put("offset", offset).toString()
+        val r = authed("/functions/v1/video-url", "POST", body)
+        if (r.code == 429) {
+            val o = runCatching { JSONObject(r.body) }.getOrNull()
+            val retryAt = o?.optString("retry_at")?.takeIf { it.isNotBlank() && it != "null" }?.let(::parseInstant)
+            throw QuotaException(Http.errorMessage(r), retryAt ?: (System.currentTimeMillis() + 3_600_000))
+        }
+        if (!r.ok) throw Http.ApiException(r.code, Http.errorMessage(r))
+        return JSONObject(r.body).optString("url").ifBlank { throw IOException("URL vidéo absente") }
     }
+
+    /** Quota de téléchargement du jour : (minutes utilisées, minutes autorisées), null si indisponible. */
+    suspend fun myQuota(): Pair<Double, Double>? = runCatching {
+        val o = JSONObject(authedOk("/rest/v1/rpc/my_download_quota", "POST", "{}"))
+        if (!o.optBoolean("enabled", true)) null else o.optDouble("used_minutes", 0.0) to o.optDouble("daily_minutes", 0.0)
+    }.getOrNull()
+
+    /** « 2026-10-14T00:00:00+00:00 » → epoch ms. */
+    private fun parseInstant(s: String): Long? =
+        runCatching { java.time.OffsetDateTime.parse(s).toInstant().toEpochMilli() }.getOrNull()
 
     suspend fun latestVersion(): AppVersion? {
         val arr = org.json.JSONArray(public("/rest/v1/app_versions?select=*&order=version_code.desc&limit=1"))

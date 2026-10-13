@@ -3,7 +3,8 @@
 //
 // Secrets requis (stockage d'origine) : R2_ACCOUNT_ID, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY, R2_BUCKET
 // Les autres stockages du pool sont lus dans la table storage_backends (clés dans Vault).
-// Optionnel : R2_URL_TTL (secondes, défaut 21600 = 6 h)
+// Optionnel : R2_URL_TTL (secondes, défaut 21600 = 6 h ; 3 h max sur un stockage facturable, cf. url_ttl)
+// Chaque demande passe par grant_download() (migration download_limits) qui protège les quotas gratuits.
 import { createClient } from "jsr:@supabase/supabase-js@2";
 import { backend, presign } from "../_shared/storage.ts";
 
@@ -28,23 +29,26 @@ Deno.serve(async (req) => {
   if (active === false) return json({ error: "Accès suspendu" }, 403);
 
   let mediaId = "";
+  let offset: number | null = null;
   try {
-    mediaId = String((await req.json()).media_id ?? "");
+    const body = await req.json();
+    mediaId = String(body.media_id ?? "");
+    if (body.offset != null && Number.isFinite(Number(body.offset))) offset = Math.max(0, Math.floor(Number(body.offset)));
   } catch { /* corps invalide */ }
   if (!/^[0-9a-f-]{36}$/i.test(mediaId)) return json({ error: "media_id invalide" }, 400);
 
-  // Épisode, sinon film. `storage_id` désigne le stockage du pool qui contient la vidéo.
-  const ep = await supabase.from("episodes").select("video_key, storage_id").eq("id", mediaId).maybeSingle();
-  let row: { video_key: string | null; storage_id: string | null } | null = ep.data;
-  if (!row?.video_key) {
-    const film = await supabase.from("titles").select("video_key, storage_id").eq("id", mediaId).eq("kind", "film").maybeSingle();
-    row = film.data;
+  // Limitation multicouche (quota par personne, budget journalier des stockages facturables,
+  // part équitable, gros consommateurs) : décidée en SQL, de façon atomique. Voir grant_download().
+  const { data: g, error: grantError } = await supabase.rpc("grant_download", { p_media: mediaId, p_offset: offset });
+  if (grantError) return json({ error: grantError.message }, 500);
+  if (!g?.ok) {
+    return json({ error: g?.message ?? "Téléchargement refusé", reason: g?.reason ?? null, retry_at: g?.retry_at ?? null }, g?.status ?? 429);
   }
-  if (!row?.video_key) return json({ error: "Vidéo introuvable" }, 404);
 
   try {
-    const b = await backend(row.storage_id);
-    return json({ url: await presign(b, row.video_key, "GET", TTL), expires_in: TTL });
+    const b = await backend(g.storage_id);
+    const ttl = Math.min(TTL, Number(g.ttl) || TTL);
+    return json({ url: await presign(b, g.video_key, "GET", ttl), expires_in: ttl });
   } catch (e) {
     return json({ error: (e as Error).message }, 500);
   }

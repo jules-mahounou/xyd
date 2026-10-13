@@ -104,6 +104,9 @@ Deno.serve(async (req) => {
       if (c.is_env) return json({ error: "Le R2 principal se configure dans le tableau de bord Cloudflare." }, 400);
 
       if (rows.provider === "b2") {
+        // authorize + list_buckets + update_bucket = 3 transactions classe C, comptées dans le budget du jour.
+        const { data: allowed } = await supabase.rpc("meter_storage_ops", { p_storage: body.storage_id, p_class_b: 0, p_class_c: 3 });
+        if (allowed === false) return json({ ok: false, error: "Budget du jour en transactions classe C atteint pour ce compte B2. Réessaie demain." });
         // Clé optionnelle (ex. clé maître) utilisée une seule fois et jamais enregistrée.
         const keyId = typeof body.key_id === "string" && body.key_id ? body.key_id : c.access_key;
         const appKey = typeof body.app_key === "string" && body.app_key ? body.app_key : c.secret_key;

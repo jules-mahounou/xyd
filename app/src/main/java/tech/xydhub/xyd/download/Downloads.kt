@@ -34,7 +34,25 @@ data class DownloadItem(
     val status: DlStatus = DlStatus.QUEUED,
     val error: String? = null,
     val addedAt: Long = System.currentTimeMillis(),
+    /** > 0 : mis en pause par la limitation serveur, reprise automatique à cette heure (epoch ms). */
+    val retryAt: Long = 0,
 ) {
+    val waitingQuota: Boolean get() = status == DlStatus.PAUSED && retryAt > 0
+    /** « Quota atteint · reprise auto à 01:00 » (ou « le 01/11 » si ce n'est pas aujourd'hui). */
+    val waitLabel: String get() {
+        val cal = java.util.Calendar.getInstance()
+        val today = cal.get(java.util.Calendar.DAY_OF_YEAR)
+        cal.timeInMillis = retryAt
+        val sameDay = cal.get(java.util.Calendar.DAY_OF_YEAR) == today
+        val tomorrow = cal.get(java.util.Calendar.DAY_OF_YEAR) == today + 1
+        val time = java.text.SimpleDateFormat("HH:mm", java.util.Locale.FRANCE).format(cal.time)
+        val day = java.text.SimpleDateFormat("dd/MM", java.util.Locale.FRANCE).format(cal.time)
+        return "Quota atteint · reprise auto " + when {
+            sameDay -> "à $time"
+            tomorrow -> "demain à $time"
+            else -> "le $day"
+        }
+    }
     val fraction: Float get() = if (sizeBytes <= 0) 0f else (downloaded.toFloat() / sizeBytes).coerceIn(0f, 1f)
     val label: String get() = if (isFilm) titleName else "S$seasonNumber · É$episodeNumber — $episodeName"
 }
@@ -62,6 +80,7 @@ object Downloads {
             when {
                 it.status == DlStatus.DONE && !file(id).exists() -> it.copy(status = DlStatus.FAILED, downloaded = 0, error = "Fichier introuvable")
                 it.status == DlStatus.RUNNING -> it.copy(status = DlStatus.QUEUED)
+                it.waitingQuota && it.retryAt <= System.currentTimeMillis() -> it.copy(status = DlStatus.QUEUED, retryAt = 0, error = null)
                 else -> it
             }
         }
@@ -69,6 +88,12 @@ object Downloads {
 
     /** Relance le service si des téléchargements attendent (appelé quand l'app passe au premier plan). */
     fun resumePending(context: Context) {
+        // Quota renouvelé : les téléchargements mis en pause par le serveur repartent seuls.
+        val now = System.currentTimeMillis()
+        if (_items.value.values.any { it.waitingQuota && it.retryAt <= now }) {
+            _items.update { m -> m.mapValues { (_, d) -> if (d.waitingQuota && d.retryAt <= now) d.copy(status = DlStatus.QUEUED, retryAt = 0, error = null) else d } }
+            persist(force = true)
+        }
         if (_items.value.values.any { it.status == DlStatus.QUEUED }) startService(context)
     }
 
@@ -76,7 +101,7 @@ object Downloads {
 
     fun enqueue(context: Context, p: Playable) {
         val existing = _items.value[p.mediaId]
-        val item = existing?.copy(status = DlStatus.QUEUED, error = null) ?: DownloadItem(
+        val item = existing?.copy(status = DlStatus.QUEUED, error = null, retryAt = 0) ?: DownloadItem(
             mediaId = p.mediaId,
             titleId = p.title.id,
             titleName = p.title.name,
@@ -102,6 +127,8 @@ object Downloads {
         if (!Repo.autoNext.value) return
         val n = Repo.next(current) ?: return
         if (_items.value[n.mediaId] != null) return
+        // Quota du jour atteint : inutile de solliciter le serveur pour l'épisode suivant.
+        if (_items.value.values.any { it.waitingQuota && it.retryAt > System.currentTimeMillis() }) return
         if (Repo.wifiOnly.value && isMetered(context)) return
         enqueue(context, n)
     }
@@ -187,7 +214,7 @@ object Downloads {
         .put("sn", d.seasonNumber).put("en", d.episodeNumber).put("ename", d.episodeName)
         .put("poster", d.poster ?: "").put("backdrop", d.backdrop ?: "").put("dur", d.durationS)
         .put("size", d.sizeBytes).put("done", d.downloaded).put("st", d.status.name)
-        .put("err", d.error ?: "").put("at", d.addedAt)
+        .put("err", d.error ?: "").put("at", d.addedAt).put("ra", d.retryAt)
 
     private fun fromJson(o: JSONObject) = DownloadItem(
         mediaId = o.getString("id"), titleId = o.getString("tid"), titleName = o.optString("tn"),
@@ -196,6 +223,6 @@ object Downloads {
         backdrop = o.optString("backdrop").ifBlank { null }, durationS = o.optInt("dur"),
         sizeBytes = o.optLong("size"), downloaded = o.optLong("done"),
         status = runCatching { DlStatus.valueOf(o.getString("st")) }.getOrDefault(DlStatus.PAUSED),
-        error = o.optString("err").ifBlank { null }, addedAt = o.optLong("at"),
+        error = o.optString("err").ifBlank { null }, addedAt = o.optLong("at"), retryAt = o.optLong("ra"),
     )
 }
