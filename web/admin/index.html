@@ -168,6 +168,11 @@ let storages = [];          // pool de stockages vidéo (table storage_backends)
 let storagesAvailable = true;
 let preferredStorage = "";  // "" = automatique, sinon id d'un stockage imposé
 let poolRender = null;
+const STORE_COLS = "id, name, provider, endpoint, region, bucket, is_env, quota_bytes, used_bytes, priority, active, created_at, access_key_vault, secret_key_vault, billable, daily_egress_bytes, daily_class_b, daily_class_c, billing_group, url_ttl";
+let usageToday = [];        // storage_usage_daily du jour UTC (budget des stockages facturables)
+let limits = null;          // app_settings.limits (fusionné avec les valeurs par défaut)
+let dlStats = [];           // admin_download_stats : consommation par personne
+let limitsAvailable = true;
 let users = [];             // profils (table profiles)
 let signupSettings = null;  // app_settings.signup
 let usersAvailable = true;
@@ -330,11 +335,24 @@ async function load() {
   }
   titles = data;
 
-  const st = await sb.from("storage_backends")
-    .select("id, name, provider, endpoint, region, bucket, is_env, quota_bytes, used_bytes, priority, active, created_at, access_key_vault, secret_key_vault")
+  let st = await sb.from("storage_backends")
+    .select(STORE_COLS)
     .order("priority").order("created_at");
+  // Migration « download_limits » pas encore appliquée : colonnes de base seulement.
+  if (st.error) st = await sb.from("storage_backends").select(STORE_COLS.split(", billable")[0]).order("priority").order("created_at");
   storagesAvailable = !st.error;
   storages = st.data || [];
+
+  const today = new Date().toISOString().slice(0, 10); // jour UTC, comme les plafonds Backblaze
+  const ud = await sb.from("storage_usage_daily").select("*").eq("day", today);
+  limitsAvailable = !ud.error;
+  usageToday = ud.data || [];
+  if (limitsAvailable) {
+    const lim = await sb.rpc("download_limits");
+    limits = lim.data || {};
+    const ds = await sb.rpc("admin_download_stats", { p_days: 7 });
+    dlStats = ds.data || [];
+  }
 
   const us = await sb.from("profiles").select("*").order("created_at", { ascending: false });
   usersAvailable = !us.error;
@@ -395,6 +413,11 @@ function renderList() {
     usersAvailable ? collapsible(usersCard(), "users", false, () => {
       const n = users.filter((u) => u.status === "blocked").length;
       return `${users.length} compte${users.length > 1 ? "s" : ""}${n ? ` · ${n} suspendu${n > 1 ? "s" : ""}` : ""}`;
+    }) : "",
+    limitsAvailable ? collapsible(downloadsCard(), "downloads", false, () => {
+      const today = dlStats.filter((u) => Number(u.minutes_today) > 0).length;
+      const heavy = dlStats.filter((u) => u.heavy).length;
+      return `${limits?.enabled === false ? "désactivée · " : ""}${today} actif${today > 1 ? "s" : ""} aujourd'hui${heavy ? ` · ${heavy} gros consommateur${heavy > 1 ? "s" : ""}` : ""}`;
     }) : "",
     storagesAvailable ? collapsible(storageCard(), "storage", false, () => {
       const act = storages.filter((x) => x.active);
@@ -703,10 +726,120 @@ function usersCard() {
   return card;
 }
 
+// ---------------------------------------------------------------- limitation des téléchargements
+const fmtMin = (m) => { m = Math.round(Number(m) || 0); return m >= 60 ? `${Math.floor(m / 60)} h${m % 60 ? " " + pad(m % 60) : ""}` : `${m} min`; };
+
+/** Réglages de la limitation + consommation par personne (détection des gros consommateurs). */
+function downloadsCard() {
+  const card = h("div", { class: "card" });
+  let days = 7;
+
+  async function reload() {
+    const { data, error } = await sb.rpc("admin_download_stats", { p_days: days });
+    if (error) return fail(error);
+    dlStats = data || [];
+    render();
+  }
+
+  async function setOverride(u, value) {
+    const v = value.trim() === "" ? null : Math.max(0, Math.round(Number(value)));
+    if (v !== null && !Number.isFinite(v)) return toast("Valeur invalide");
+    const { error } = await sb.from("profiles").update({ daily_minutes: v }).eq("user_id", u.user_id);
+    if (error) return fail(error);
+    toast(v === null ? "Quota par défaut" : v === 0 ? "Téléchargements bloqués pour ce compte" : `Quota : ${fmtMin(v)} / jour`);
+    reload();
+  }
+
+  const render = () => {
+    const L = limits || {};
+    // [clé, libellé, unité affichée, facteur vers la valeur stockée]
+    const num = (key, label, scale = 1, step = "1") => {
+      const i = h("input", { type: "number", min: "0", step, value: L[key] != null ? +(L[key] / scale).toFixed(2) : "" });
+      i.dataset.key = key; i.dataset.scale = scale;
+      return h("div", {}, h("label", {}, label), i);
+    };
+    const enabled = h("input", { type: "checkbox", checked: L.enabled !== false });
+    const exempt = h("input", { type: "checkbox", checked: !!L.admins_exempt });
+    const form = h("div", { class: "grid2" },
+      num("user_daily_minutes", "Vidéo par personne / jour (heures)", 60, "0.5"),
+      num("user_monthly_minutes", "Vidéo par personne / mois (heures)", 60, "1"),
+      num("user_daily_files", "Vidéos par personne / jour"),
+      num("resume_grants", "Reprises gratuites par vidéo / jour"),
+      num("burst_files", "Anti-rafale : lancements max…"),
+      num("burst_window_min", "…en (minutes)"),
+      num("billable_user_share", "Part max d'un stockage facturable par personne (%)", 0.01, "5"),
+      num("late_release_hours", "Part levée les dernières heures du jour UTC (h)"),
+      num("heavy_factor", "Gros consommateur : × la médiane sur 7 j", 1, "0.5"),
+      num("heavy_min_minutes", "…et au moins (heures sur 7 j)", 60, "1"),
+      num("heavy_penalty", "Quota restant aux gros consommateurs (%)", 0.01, "5"),
+    );
+    const save = h("button", { onclick: async () => {
+      const value = { ...L, enabled: enabled.checked, admins_exempt: exempt.checked };
+      for (const i of form.querySelectorAll("input[data-key]")) {
+        if (i.value === "") continue;
+        const n = Number(i.value) * Number(i.dataset.scale);
+        if (!Number.isFinite(n) || n < 0) return toast("Valeur invalide : " + i.previousSibling.textContent);
+        value[i.dataset.key] = Math.round(n * 100) / 100;
+      }
+      save.disabled = true;
+      const { error } = await sb.from("app_settings").upsert({ key: "limits", value });
+      save.disabled = false;
+      if (error) return fail(error);
+      limits = value; toast("Limitation enregistrée"); reload();
+    } }, "Enregistrer");
+
+    const period = h("select", { style: { maxWidth: "160px" } },
+      ...[[1, "Aujourd'hui"], [7, "7 jours"], [30, "30 jours"]].map(([d, l]) => h("option", { value: d, selected: d === days }, l)));
+    period.onchange = () => { days = Number(period.value); reload(); };
+
+    card.replaceChildren(
+      h("div", { class: "row" }, h("h3", { style: { flex: 1 } }, "Téléchargements"), period,
+        h("button", { class: "ghost", onclick: reload }, "Actualiser")),
+      h("div", { class: "sform", style: { marginTop: "12px" } },
+        h("b", {}, "Limitation multicouche"),
+        h("p", { class: "muted", style: { fontSize: "12px", marginTop: "4px" } },
+          "Quota personnel en durée de vidéo, budget journalier des stockages facturables (réglé dans chaque stockage), part équitable, anti-rafale, gros consommateurs. Les reprises d'une même vidéo ne sont pas recomptées. Jour = jour UTC."),
+        h("label", { class: "check", style: { display: "flex", marginTop: "10px" } }, enabled, "Limitation active"),
+        h("label", { class: "check", style: { display: "flex", marginTop: "6px" } }, exempt, "Les admins ne sont pas limités par le quota personnel (le budget des stockages s'applique toujours)"),
+        form,
+        h("div", { class: "row", style: { marginTop: "12px" } }, save),
+      ),
+      h("p", { class: "muted", style: { fontSize: "12px", marginTop: "12px" } },
+        "Quota perso : vide = réglage global, 0 = téléchargements bloqués. Trié par consommation sur la période."),
+      h("div", { style: { marginTop: "4px" } }, ...dlStats.map((u) => {
+        const ov = h("input", { type: "number", min: "0", step: "30", value: u.daily_override ?? "", placeholder: "défaut", title: "Minutes de vidéo par jour", style: { width: "92px", padding: "6px 8px" } });
+        ov.onchange = () => setOverride(u, ov.value);
+        const quota = Number(u.daily_quota) || 0;
+        return h("div", { class: "user" },
+          h("div", { class: "who" },
+            h("b", {}, u.name || "—"), u.heavy ? h("span", { class: "st blocked", style: { marginLeft: "6px" } }, "gros consommateur") : "",
+            h("small", {}, u.email || ""),
+            h("small", {}, `Aujourd'hui : ${fmtMin(u.minutes_today)} / ${quota > 0 ? fmtMin(quota) : "bloqué"} · ${u.files_today} vidéo${u.files_today > 1 ? "s" : ""}` +
+              (Number(u.billable_bytes_today) ? ` · ${fmtBytes(Number(u.billable_bytes_today))} sur stockage facturable` : "") +
+              (Number(u.refused_today) ? ` · ${u.refused_today} refus` : "")),
+            h("small", {}, `${days === 1 ? "Aujourd'hui" : days + " jours"} : ${fmtMin(u.minutes_period)} · ${u.files_period} vidéo${u.files_period > 1 ? "s" : ""} · ${fmtBytes(Number(u.bytes_period))}`),
+          ),
+          h("span", { class: "muted", style: { fontSize: "12px" } }, "min/jour"), ov,
+        );
+      })),
+    );
+  };
+
+  render();
+  return card;
+}
+
 // ---------------------------------------------------------------- stockages (pool)
 const fmtBytes = (b) => !b ? "0 Go" : b >= 1e9 ? (b / 1e9).toFixed(2).replace(".", ",") + " Go" : Math.round(b / 1e6) + " Mo";
 const pct = (used, quota) => quota > 0 ? Math.round((used / quota) * 100) : 100;
 const PROVIDERS = { r2: "Cloudflare R2", b2: "Backblaze B2", s3: "Autre S3" };
+// Mêmes valeurs par défaut que grant_download() : R2 = sortie gratuite, le reste a un budget journalier.
+const isBillable = (x) => x.billable ?? x.provider !== "r2";
+const billKey = (x) => (x.billing_group || "").trim() || x.id;
+const egressCap = (x) => x.daily_egress_bytes ?? 900e6;
+const classBCap = (x) => x.daily_class_b ?? 2250;
+const classCCap = (x) => x.daily_class_c ?? 2250;
+const usageOf = (x) => usageToday.find((u) => u.bill_key === billKey(x)) || { egress_bytes: 0, class_b: 0, class_c: 0, downloads: 0, refused: 0 };
 
 function meter(used, quota) {
   const p = pct(used, quota);
@@ -830,10 +963,20 @@ function storageCard() {
         x.is_env ? h("span", { class: "tag" }, "secrets GitHub") : "",
         x.active ? "" : h("span", { class: "tag" }, "désactivé"),
         h("span", { class: "tag" }, "priorité " + x.priority),
+        limitsAvailable ? h("span", { class: "tag", title: isBillable(x) ? "Budget journalier protégé par la limitation des téléchargements" : "Téléchargements non limités par ce stockage" },
+          isBillable(x) ? "facturable" + (x.billing_group ? " · " + x.billing_group : "") : "sortie gratuite") : "",
         h("span", { style: { flex: 1 } }),
         h("span", { class: "muted", style: { fontSize: "13px" } }, `${fmtBytes(x.used_bytes)} / ${fmtBytes(x.quota_bytes)} · ${p} %`),
       ),
       meter(x.used_bytes, x.quota_bytes),
+      limitsAvailable && isBillable(x) ? (() => {
+        const u = usageOf(x);
+        return h("div", { style: { marginTop: "8px", fontSize: "13px" } },
+          h("div", { class: "row" },
+            h("span", { style: { flex: 1 } }, `Aujourd'hui (UTC) : ${fmtBytes(u.egress_bytes)} / ${fmtBytes(egressCap(x))} téléchargés`),
+            h("span", { class: "muted" }, `classe B ${u.class_b}/${classBCap(x)} · C ${u.class_c}/${classCCap(x)}${u.refused ? ` · ${u.refused} refus` : ""}`)),
+          meter(u.egress_bytes, egressCap(x)));
+      })() : "",
       h("div", { class: "row", style: { marginTop: "6px", gap: "4px" } },
         h("button", { class: "link", onclick: test }, "Tester"),
         x.is_env ? "" : h("button", { class: "link", onclick: cors, title: "Autorise l'envoi des vidéos depuis cette page" }, "Configurer CORS"),
@@ -867,6 +1010,11 @@ function storageCard() {
       quota: h("input", { type: "number", step: "0.1", min: "0.1", value: x ? (x.quota_bytes / 1e9).toFixed(1) : "9.5" }),
       priority: h("input", { type: "number", value: x?.priority ?? (Math.max(0, ...storages.map((y) => y.priority)) + 1) }),
       active: h("input", { type: "checkbox", checked: x ? x.active : true }),
+      billable: h("input", { type: "checkbox", checked: x ? isBillable(x) : true }),
+      egress: h("input", { type: "number", min: "0", step: "50", value: x ? Math.round(egressCap(x) / 1e6) : 900 }),
+      classB: h("input", { type: "number", min: "0", value: x ? classBCap(x) : 2250 }),
+      classC: h("input", { type: "number", min: "0", value: x ? classCCap(x) : 2250 }),
+      group: h("input", { type: "text", value: x?.billing_group || "", placeholder: "ex : b2-compte-1 (vide = budget propre)" }),
     };
     // R2 : l'endpoint se déduit de l'Account ID.
     const m = /^https:\/\/([0-9a-f]{32})\.r2\.cloudflarestorage\.com/i.exec(x?.endpoint || "");
@@ -889,7 +1037,7 @@ function storageCard() {
         ),
       );
     };
-    v.provider.onchange = layout;
+    v.provider.onchange = () => { v.billable.checked = v.provider.value !== "r2"; layout(); };
     layout();
 
     const save = h("button", { onclick: async () => {
@@ -924,8 +1072,18 @@ function storageCard() {
       });
       save.disabled = false;
       if (error) return (err.textContent = error.message);
+      if (limitsAvailable) {
+        const { error: e2 } = await sb.from("storage_backends").update({
+          billable: v.billable.checked,
+          daily_egress_bytes: Math.max(0, Math.round(Number(v.egress.value) * 1e6)),
+          daily_class_b: Math.max(0, Math.round(Number(v.classB.value))),
+          daily_class_c: Math.max(0, Math.round(Number(v.classC.value))),
+          billing_group: v.group.value.trim() || null,
+        }).eq("id", id);
+        if (e2) return (err.textContent = e2.message);
+      }
       const { data } = await sb.from("storage_backends")
-        .select("id, name, provider, endpoint, region, bucket, is_env, quota_bytes, used_bytes, priority, active, created_at, access_key_vault, secret_key_vault")
+        .select(STORE_COLS)
         .eq("id", id).single();
       if (data) {
         const i = storages.findIndex((y) => y.id === id);
@@ -942,6 +1100,17 @@ function storageCard() {
       h("div", { class: "grid2" },
         h("div", {}, h("label", {}, "Quota (Go) — garde une marge sous la limite gratuite"), v.quota),
         h("div", {}, h("label", {}, "Priorité (petit = rempli en premier)"), v.priority)),
+      limitsAvailable ? h("div", { style: { marginTop: "14px", paddingTop: "10px", borderTop: "1px solid var(--line)" } },
+        h("label", { class: "check", style: { display: "flex" } }, v.billable, "Facturable : limiter les téléchargements à un budget gratuit par jour (UTC)"),
+        h("div", { class: "grid2" },
+          h("div", {}, h("label", {}, "Sortie max / jour (Mo) — B2 : 1 Go gratuit"), v.egress),
+          h("div", {}, h("label", {}, "Compte de facturation (budget partagé)"), v.group)),
+        h("div", { class: "grid2" },
+          h("div", {}, h("label", {}, "Transactions classe B / jour"), v.classB),
+          h("div", {}, h("label", {}, "Transactions classe C / jour"), v.classC)),
+        h("p", { class: "muted", style: { fontSize: "12px", marginTop: "6px" } },
+          "Garde une marge sous les limites gratuites (ex. 900 Mo pour 1 Go). Plusieurs buckets d'un même compte B2 : mets le même nom de compte, ils partageront le budget."),
+      ) : "",
       h("label", { class: "check", style: { marginTop: "12px" } }, v.active, "Actif (reçoit de nouvelles vidéos)"),
       h("div", { class: "row", style: { marginTop: "14px" } }, save,
         h("button", { class: "ghost", onclick: () => { editing = null; render(); } }, "Annuler")),

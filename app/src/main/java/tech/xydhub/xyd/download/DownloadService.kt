@@ -66,13 +66,17 @@ class DownloadService : Service() {
         try {
             while (true) {
                 val item = Downloads.nextQueued() ?: break
-                Downloads.set(item.mediaId) { it.copy(status = DlStatus.RUNNING, error = null) }
+                Downloads.set(item.mediaId) { it.copy(status = DlStatus.RUNNING, error = null, retryAt = 0) }
                 var attempt = 0
                 while (true) {
                     try {
                         download(item)
                         break
                     } catch (e: StoppedException) {
+                        break
+                    } catch (e: Supabase.QuotaException) {
+                        // Limitation serveur : pause (fichier partiel conservé), reprise auto après retryAt.
+                        Downloads.set(item.mediaId) { it.copy(status = DlStatus.PAUSED, error = e.message, retryAt = e.retryAt) }
                         break
                     } catch (e: Exception) {
                         coroutineContext.ensureActive()
@@ -118,7 +122,7 @@ class DownloadService : Service() {
             }
 
             val url = try {
-                Supabase.videoUrl(id)
+                Supabase.videoUrl(id, have)
             } catch (e: Http.ApiException) {
                 if (e.code in 400..499) throw FatalException(e.message ?: "Accès refusé") else throw e
             }

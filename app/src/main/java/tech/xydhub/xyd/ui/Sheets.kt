@@ -345,7 +345,7 @@ private fun MainAction(p: Playable, d: DownloadItem?, posMs: Long, onPlay: (Stri
         DlStatus.DONE -> (if (posMs > 5_000) "Reprendre" else "Lire") + if (p.episode != null) " · ${p.shortLabel}" else ""
         DlStatus.RUNNING -> "Téléchargement… ${(d!!.fraction * 100).toInt()} %"
         DlStatus.QUEUED -> "En attente…"
-        DlStatus.PAUSED -> "Reprendre le téléchargement"
+        DlStatus.PAUSED -> if (d!!.waitingQuota) "Quota atteint · reprendre plus tard" else "Reprendre le téléchargement"
         DlStatus.FAILED -> "Réessayer le téléchargement"
         null -> "Télécharger" + (if (p.episode != null) " · ${p.shortLabel}" else "") +
             fmtSize(p.sizeBytes).let { if (it.isBlank()) "" else " ($it)" }
@@ -371,6 +371,9 @@ private fun MainAction(p: Playable, d: DownloadItem?, posMs: Long, onPlay: (Stri
         d?.takeIf { it.status == DlStatus.FAILED }?.error?.let {
             Text(it, color = Xyd.Danger, fontSize = 12.sp, modifier = Modifier.padding(top = 6.dp))
         }
+        d?.takeIf { it.waitingQuota }?.let {
+            Text("${it.error.orEmpty()}\n${it.waitLabel}".trim(), color = Xyd.Muted, fontSize = 12.sp, modifier = Modifier.padding(top = 6.dp))
+        }
     }
 }
 
@@ -388,7 +391,7 @@ private fun EpisodeRow(p: Playable, d: DownloadItem?, watched: Float, onPlay: (S
             val sub = when (d?.status) {
                 DlStatus.RUNNING -> "${(d!!.fraction * 100).toInt()} % · ${fmtSize(d.downloaded)} / ${fmtSize(d.sizeBytes)}"
                 DlStatus.QUEUED -> "En attente"
-                DlStatus.PAUSED -> "En pause · ${(d!!.fraction * 100).toInt()} %"
+                DlStatus.PAUSED -> if (d!!.waitingQuota) d.waitLabel else "En pause · ${(d.fraction * 100).toInt()} %"
                 DlStatus.FAILED -> d!!.error ?: "Échec"
                 else -> listOf(fmtDuration(e.durationS), fmtSize(e.sizeBytes)).filter { it.isNotBlank() }.joinToString(" · ")
             }
@@ -415,6 +418,9 @@ fun DownloadsSheet(onPlay: (String) -> Unit, onDismiss: () -> Unit) {
     val used = remember(items) { Downloads.usedBytes() }
     var filter by rememberSaveable { mutableIntStateOf(0) } // 0 = tout, 1 = séries, 2 = films
     val expanded = remember { androidx.compose.runtime.mutableStateMapOf<String, Boolean>() }
+    // Quota du jour (durée de vidéo), rafraîchi quand la liste change.
+    var quota by remember { mutableStateOf<Pair<Double, Double>?>(null) }
+    androidx.compose.runtime.LaunchedEffect(items.size) { quota = Supabase.myQuota() }
 
     // Groupes triés par activité la plus récente.
     val groups = remember(items) {
@@ -438,6 +444,19 @@ fun DownloadsSheet(onPlay: (String) -> Unit, onDismiss: () -> Unit) {
             Row(Modifier.padding(horizontal = 20.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
                 Text("Téléchargements", fontSize = 20.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
                 Text(fmtSize(used).ifBlank { "0 Mo" }, color = Xyd.Muted, fontSize = 13.sp)
+            }
+            quota?.let { (usedMin, maxMin) ->
+                if (maxMin > 0) {
+                    Text(
+                        "Aujourd'hui : ${fmtDuration((usedMin * 60).toInt()).ifBlank { "0 min" }} / ${fmtDuration((maxMin * 60).toInt())} de vidéo",
+                        color = Xyd.Muted, fontSize = 12.sp, modifier = Modifier.padding(horizontal = 20.dp),
+                    )
+                    LinearProgressIndicator(
+                        progress = { (usedMin / maxMin).toFloat().coerceIn(0f, 1f) },
+                        modifier = Modifier.padding(horizontal = 20.dp, vertical = 6.dp).fillMaxWidth().height(3.dp),
+                        color = if (usedMin >= maxMin) Xyd.Danger else Xyd.Grey, trackColor = Xyd.Line, drawStopIndicator = {},
+                    )
+                }
             }
             if (hasSeries && hasFilms) {
                 Row(Modifier.padding(horizontal = 20.dp, vertical = 4.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -495,7 +514,7 @@ private fun statusText(d: DownloadItem): String = when (d.status) {
     DlStatus.DONE -> fmtSize(d.sizeBytes)
     DlStatus.RUNNING -> "${(d.fraction * 100).toInt()} % · ${fmtSize(d.downloaded)} / ${fmtSize(d.sizeBytes)}"
     DlStatus.QUEUED -> "En attente"
-    DlStatus.PAUSED -> "En pause · ${(d.fraction * 100).toInt()} %"
+    DlStatus.PAUSED -> if (d.waitingQuota) d.waitLabel else "En pause · ${(d.fraction * 100).toInt()} %"
     DlStatus.FAILED -> "Échec : ${d.error ?: "erreur"}"
 }
 
