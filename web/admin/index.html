@@ -912,7 +912,7 @@ function storageCard() {
       h("div", { style: { marginTop: "10px" } },
         h("div", { class: "row", style: { fontSize: "14px" } },
           h("span", { style: { flex: 1 } }, `Pool : ${fmtBytes(used)} / ${fmtBytes(quota)}`),
-          h("span", { class: "muted" }, `${pct(used, quota)} % · reste ${fmtBytes(Math.max(0, quota - used))}`)),
+          h("span", { class: "muted" }, `${pct(used, quota)} % · reste ${fmtBytes(act.reduce((a, x) => a + Math.max(0, x.quota_bytes - x.used_bytes), 0))}`)),
         meter(used, quota),
       ),
       editing === "new" ? storageForm(null) : "",
