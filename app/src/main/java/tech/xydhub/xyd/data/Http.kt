@@ -54,6 +54,9 @@ object Http {
             raw.contains("Password should be", true) -> "Mot de passe trop court (6 caractères minimum)"
             raw.contains("valid email", true) || raw.contains("invalid format", true) -> "Adresse email invalide"
             raw.contains("Signups not allowed", true) -> "Les inscriptions sont fermées"
+            // Table / fonction pas encore déployée côté serveur (migration en retard).
+            raw.contains("schema cache", true) || raw.contains("does not exist", true) ->
+                "Cette fonction n'est pas encore disponible, réessaie un peu plus tard."
             raw.isNotBlank() -> raw
             else -> "Erreur serveur (${r.code})"
         }

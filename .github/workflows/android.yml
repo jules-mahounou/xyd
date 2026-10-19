@@ -84,6 +84,13 @@ jobs:
             echo "::warning::MAIL_API_KEY / MAIL_TO non définis : l'inscription échouera (mail externe non configuré)."
           fi
 
+      - name: Base Supabase à jour
+        if: env.SUPABASE_URL != ''
+        run: |
+          if .github/scripts/check-schema.sh; then exit 0; fi
+          if [ "$PUBLISH" = "true" ]; then echo "::error::Publication bloquée : l'app utiliserait des tables absentes."; exit 1; fi
+          echo "::warning::Build non publié : base en retard sur le code."
+
       - name: Build APK release
         run: ./gradlew :app:assembleRelease --stacktrace
 
