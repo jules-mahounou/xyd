@@ -167,6 +167,19 @@ object Supabase {
         if (!o.optBoolean("enabled", true)) null else o.optDouble("used_minutes", 0.0) to o.optDouble("daily_minutes", 0.0)
     }.getOrNull()
 
+    // ---------- Requêtes des utilisateurs (avis, demandes…) ----------
+
+    suspend fun submitRequest(kind: RequestKind, message: String) {
+        val body = JSONObject().put("kind", kind.key).put("message", message.trim())
+            .put("app_version", "${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE})").toString()
+        authedOk("/rest/v1/user_requests", "POST", body, mapOf("Prefer" to "return=minimal"))
+    }
+
+    /** Requêtes du compte connecté (filtre explicite : un admin voit toutes les lignes via RLS). */
+    suspend fun myRequests(userId: String): List<UserRequest> = Parse.requests(
+        authedOk("/rest/v1/user_requests?select=id,kind,message,status,reply,created_at&user_id=eq.$userId&order=created_at.desc&limit=30")
+    )
+
     /** « 2026-10-14T00:00:00+00:00 » → epoch ms. */
     private fun parseInstant(s: String): Long? =
         runCatching { java.time.OffsetDateTime.parse(s).toInstant().toEpochMilli() }.getOrNull()

@@ -64,6 +64,26 @@ data class AppVersion(
     val changelog: String,
 )
 
+/** Type de requête envoyée depuis l'accueil (clé stockée en base → libellé affiché). */
+enum class RequestKind(val key: String, val label: String, val chip: String, val hint: String) {
+    REQUEST("request", "Demande de série / film", "Série / film", "Quelle série ou quel film veux-tu voir sur xyd ?"),
+    FEEDBACK("feedback", "Avis", "Avis", "Ton avis sur le design, le fonctionnement, ce qui te plaît ou pas…"),
+    BUG("bug", "Problème", "Problème", "Décris le problème : ce que tu faisais, ce qui s'est passé…"),
+    OTHER("other", "Autre", "Autre", "Ta demande, ta question, ton idée…"),
+    ;
+    companion object { fun of(key: String) = entries.firstOrNull { it.key == key } ?: OTHER }
+}
+
+/** Requête d'un utilisateur. `status` : new / seen / done. `reply` : réponse de l'admin. */
+data class UserRequest(
+    val id: String,
+    val kind: RequestKind,
+    val message: String,
+    val status: String,
+    val reply: String?,
+    val createdAt: String,
+)
+
 object Parse {
     fun categories(json: String): List<Category> {
         val arr = JSONArray(json)
@@ -83,6 +103,21 @@ object Parse {
 
     private fun JSONObject.str(k: String) = if (isNull(k)) "" else optString(k)
     private fun JSONObject.strOrNull(k: String) = if (isNull(k)) null else optString(k).ifBlank { null }
+
+    fun requests(json: String): List<UserRequest> {
+        val arr = JSONArray(json)
+        return (0 until arr.length()).map { i ->
+            val o = arr.getJSONObject(i)
+            UserRequest(
+                id = o.getString("id"),
+                kind = RequestKind.of(o.optString("kind")),
+                message = o.str("message"),
+                status = o.optString("status", "new"),
+                reply = o.strOrNull("reply"),
+                createdAt = o.optString("created_at"),
+            )
+        }
+    }
 
     fun catalog(json: String): List<Title> {
         val arr = JSONArray(json)

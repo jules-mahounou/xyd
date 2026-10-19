@@ -34,6 +34,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.PlayArrow
@@ -81,6 +82,7 @@ import tech.xydhub.xyd.download.Downloads
 /** Feuilles ouvrables depuis l'accueil. */
 private const val SHEET_DOWNLOADS = "#downloads"
 private const val SHEET_SETTINGS = "#settings"
+private const val SHEET_REQUEST = "#request"
 
 /** Filtres en haut de l'accueil : "all", "serie", "film" ou "cat:<id>". */
 private const val F_ALL = "all"
@@ -103,7 +105,7 @@ fun HomeScreen(onPlay: (String) -> Unit) {
     val accountStatus by Repo.accountStatus.collectAsStateWithLifecycle()
     val downloads by Downloads.items.collectAsStateWithLifecycle()
 
-    // Valeur = id d'un titre, ou SHEET_DOWNLOADS / SHEET_SETTINGS.
+    // Valeur = id d'un titre, ou SHEET_DOWNLOADS / SHEET_SETTINGS / SHEET_REQUEST.
     var sheet by rememberSaveable { mutableStateOf<String?>(null) }
     var filter by rememberSaveable { mutableStateOf(F_ALL) }
     var resumeMenu by rememberSaveable { mutableStateOf<String?>(null) } // mediaId
@@ -143,6 +145,9 @@ fun HomeScreen(onPlay: (String) -> Unit) {
         ) {
             Logo(30.dp)
             Spacer(Modifier.weight(1f))
+            IconButton(onClick = { sheet = SHEET_REQUEST }) {
+                Icon(Icons.Filled.Edit, "Soumettre une requête", tint = Color.White)
+            }
             IconButton(onClick = { sheet = SHEET_DOWNLOADS }) {
                 BadgedBox(badge = { if (active > 0) Badge(containerColor = Xyd.Grey) { Text("$active", color = Xyd.Black) } }) {
                     Icon(XIcons.Download, "Téléchargements", tint = Color.White)
@@ -257,6 +262,10 @@ fun HomeScreen(onPlay: (String) -> Unit) {
                 }
             }
 
+            if (session != null && catalog.isNotEmpty()) {
+                item(key = "request-cta") { RequestCta { sheet = SHEET_REQUEST } }
+            }
+
             if (catalog.isEmpty() && session != null && !loading && error != null) {
                 item {
                     Column(
@@ -299,6 +308,7 @@ fun HomeScreen(onPlay: (String) -> Unit) {
         null -> {}
         SHEET_DOWNLOADS -> DownloadsSheet(onPlay = { sheet = null; onPlay(it) }, onDismiss = { sheet = null })
         SHEET_SETTINGS -> SettingsSheet(onDismiss = { sheet = null })
+        SHEET_REQUEST -> RequestSheet(onDismiss = { sheet = null })
         else -> catalog.firstOrNull { it.id == s }?.let { t ->
             TitleSheet(t, onPlay = { sheet = null; onPlay(it) }, download = download, onDismiss = { sheet = null })
         } ?: run { sheet = null }
@@ -308,6 +318,32 @@ fun HomeScreen(onPlay: (String) -> Unit) {
         AuthSheet()
     } else if (accountStatus == "blocked") {
         AccountGate()
+    }
+}
+
+/** Bas de l'accueil : invitation à demander un film / une série ou à donner son avis. */
+@Composable
+private fun RequestCta(onClick: () -> Unit) {
+    Row(
+        Modifier.padding(horizontal = 20.dp).padding(top = 28.dp).fillMaxWidth()
+            .clip(RoundedCornerShape(14.dp)).background(Xyd.Card)
+            .border(1.dp, Xyd.Line, RoundedCornerShape(14.dp))
+            .clickable(onClick = onClick).padding(16.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Column(Modifier.weight(1f)) {
+            Text("Il te manque une série, un film ?", fontSize = 15.sp, fontWeight = FontWeight.SemiBold, color = Xyd.Text)
+            Text(
+                "Demande-le, donne ton avis ou signale un problème.",
+                fontSize = 13.sp, color = Xyd.Muted, lineHeight = 18.sp, modifier = Modifier.padding(top = 2.dp),
+            )
+        }
+        Spacer(Modifier.width(12.dp))
+        Text(
+            "Soumettre",
+            Modifier.clip(RoundedCornerShape(10.dp)).background(Xyd.Grey).padding(horizontal = 14.dp, vertical = 8.dp),
+            color = Xyd.Black, fontSize = 13.sp, fontWeight = FontWeight.SemiBold,
+        )
     }
 }
 

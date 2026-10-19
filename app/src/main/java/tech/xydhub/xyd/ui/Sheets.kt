@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
@@ -55,6 +56,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -82,8 +84,10 @@ import tech.xydhub.xyd.BuildConfig
 import tech.xydhub.xyd.data.OrientationMode
 import tech.xydhub.xyd.data.Playable
 import tech.xydhub.xyd.data.Repo
+import tech.xydhub.xyd.data.RequestKind
 import tech.xydhub.xyd.data.Supabase
 import tech.xydhub.xyd.data.Title
+import tech.xydhub.xyd.data.UserRequest
 import tech.xydhub.xyd.download.DlStatus
 import tech.xydhub.xyd.download.DownloadItem
 import tech.xydhub.xyd.download.Downloads
@@ -597,6 +601,141 @@ private fun EpisodeDownloadRow(d: DownloadItem, onClick: () -> Unit) {
             Icon(Icons.Filled.PlayArrow, "Lire", tint = Xyd.Grey, modifier = Modifier.padding(horizontal = 4.dp))
         }
         IconButton(onClick = { Downloads.remove(d.mediaId) }) { Icon(Icons.Filled.Close, "Supprimer", tint = Xyd.Muted, modifier = Modifier.size(18.dp)) }
+    }
+}
+
+// ---------------------------------------------------------------- Requêtes (demandes, avis…)
+
+private val REQUEST_STATUS = mapOf("new" to "Envoyée", "seen" to "Vue", "done" to "Traitée")
+
+/** « Soumettre une requête » : demande de série / film, avis, problème… + historique et réponses de l'admin. */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun RequestSheet(onDismiss: () -> Unit) {
+    val session by Repo.session.collectAsStateWithLifecycle()
+    var kind by rememberSaveable { mutableStateOf(RequestKind.REQUEST) }
+    var message by rememberSaveable { mutableStateOf("") }
+    var busy by remember { mutableStateOf(false) }
+    var err by remember { mutableStateOf<String?>(null) }
+    var sent by remember { mutableStateOf(false) }
+    var mine by remember { mutableStateOf<List<UserRequest>?>(null) }
+    val scope = rememberCoroutineScope()
+
+    suspend fun reload() {
+        val s = session ?: return
+        runCatching { Supabase.myRequests(s.userId) }.onSuccess { mine = it }
+    }
+    LaunchedEffect(Unit) { reload() }
+
+    fun submit() {
+        if (busy) return
+        val m = message.trim()
+        err = when {
+            m.length < 3 -> "Écris quelques mots"
+            m.length > 2000 -> "2000 caractères maximum"
+            else -> null
+        }
+        if (err != null) return
+        busy = true
+        sent = false
+        scope.launch {
+            try {
+                Supabase.submitRequest(kind, m)
+                message = ""
+                sent = true
+                reload()
+            } catch (e: Exception) {
+                err = if (e is java.net.UnknownHostException) "Pas de connexion internet" else e.message ?: "Erreur"
+            } finally {
+                busy = false
+            }
+        }
+    }
+
+    XSheet(onDismiss) {
+        Column(
+            Modifier.fillMaxWidth().verticalScroll(rememberScrollState())
+                .navigationBarsPadding().imePadding().padding(horizontal = 20.dp).padding(bottom = 24.dp),
+        ) {
+            Text("Soumettre une requête", fontSize = 20.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(vertical = 8.dp))
+            Text(
+                "Un film ou une série à ajouter, un avis sur le design ou le fonctionnement, un problème, une idée… Tout est lu.",
+                color = Xyd.Muted, fontSize = 13.sp, lineHeight = 18.sp,
+            )
+
+            Label("Type")
+            Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                RequestKind.entries.forEach { k ->
+                    FilterChip(
+                        selected = kind == k, onClick = { kind = k; sent = false }, label = { Text(k.chip) },
+                        colors = FilterChipDefaults.filterChipColors(
+                            selectedContainerColor = Xyd.Grey, selectedLabelColor = Xyd.Black, labelColor = Xyd.Grey,
+                        ),
+                        border = FilterChipDefaults.filterChipBorder(enabled = true, selected = kind == k, borderColor = Xyd.Line),
+                    )
+                }
+            }
+
+            Spacer(Modifier.height(12.dp))
+            OutlinedTextField(
+                value = message, onValueChange = { if (it.length <= 2000) { message = it; sent = false } },
+                placeholder = { Text(kind.hint, color = Xyd.Muted) },
+                minLines = 5, maxLines = 10,
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(12.dp),
+                supportingText = { Text("${message.length} / 2000", color = Xyd.Muted, fontSize = 11.sp) },
+                colors = OutlinedTextFieldDefaults.colors(
+                    focusedBorderColor = Xyd.Grey, unfocusedBorderColor = Xyd.Line,
+                    focusedLabelColor = Xyd.Grey, cursorColor = Xyd.Grey,
+                ),
+            )
+            err?.let { Text(it, color = Xyd.Danger, fontSize = 13.sp, modifier = Modifier.padding(top = 4.dp)) }
+            if (sent) Text("Merci ! Ta requête a bien été envoyée.", color = Xyd.Grey, fontSize = 13.sp, modifier = Modifier.padding(top = 4.dp))
+            Spacer(Modifier.height(12.dp))
+            Button(
+                onClick = ::submit, enabled = !busy && message.isNotBlank(),
+                modifier = Modifier.fillMaxWidth().height(50.dp),
+                colors = ButtonDefaults.buttonColors(containerColor = Xyd.Grey, contentColor = Xyd.Black),
+                shape = RoundedCornerShape(12.dp),
+            ) {
+                if (busy) CircularProgressIndicator(Modifier.size(20.dp), color = Xyd.Black, strokeWidth = 2.dp)
+                else Text("Envoyer", fontWeight = FontWeight.SemiBold)
+            }
+
+            mine?.takeIf { it.isNotEmpty() }?.let { list ->
+                Label("Mes requêtes")
+                list.forEach { r -> RequestRow(r) }
+            }
+        }
+    }
+}
+
+@Composable
+private fun RequestRow(r: UserRequest) {
+    val date = remember(r.createdAt) {
+        runCatching {
+            java.time.OffsetDateTime.parse(r.createdAt)
+                .format(java.time.format.DateTimeFormatter.ofPattern("d MMM", java.util.Locale.FRENCH))
+        }.getOrDefault("")
+    }
+    Column(
+        Modifier.fillMaxWidth().padding(bottom = 10.dp).clip(RoundedCornerShape(12.dp))
+            .background(Xyd.Card).padding(12.dp),
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(r.kind.label, fontSize = 12.sp, color = Xyd.Grey, fontWeight = FontWeight.Medium, modifier = Modifier.weight(1f))
+            Text(
+                listOf(date, REQUEST_STATUS[r.status] ?: r.status).filter { it.isNotBlank() }.joinToString(" · "),
+                fontSize = 11.sp, color = if (r.status == "done") Xyd.Grey else Xyd.Muted,
+            )
+        }
+        Text(r.message, fontSize = 14.sp, color = Xyd.Text, maxLines = 4, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 4.dp))
+        r.reply?.let {
+            Column(Modifier.padding(top = 8.dp).fillMaxWidth().clip(RoundedCornerShape(8.dp)).background(Xyd.Line).padding(10.dp)) {
+                Text("Réponse de xyd", fontSize = 11.sp, color = Xyd.Muted, fontWeight = FontWeight.SemiBold)
+                Text(it, fontSize = 13.sp, color = Xyd.Text, modifier = Modifier.padding(top = 2.dp))
+            }
+        }
     }
 }
 

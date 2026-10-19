@@ -111,6 +111,11 @@
   .st.active { color:var(--ok); border-color:#1f3b25; }
   .st.blocked { color:var(--danger); border-color:#3a1d1e; }
   .fields { display:flex; gap:14px; flex-wrap:wrap; margin-top:6px; }
+  .st.new { color:#e5b84d; border-color:#3b311c; }
+  .st.seen { color:var(--grey); }
+  .st.done { color:var(--ok); border-color:#1f3b25; }
+  .req .msg { flex-basis:100%; white-space:pre-wrap; word-break:break-word; font-size:14px; color:var(--text); }
+  .req .reply { flex-basis:100%; font-size:13px; color:var(--grey); background:var(--card2); border:1px solid var(--line); border-radius:10px; padding:8px 10px; white-space:pre-wrap; }
   [hidden] { display:none !important; }
 </style>
 </head>
@@ -176,6 +181,8 @@ let limitsAvailable = true;
 let users = [];             // profils (table profiles)
 let signupSettings = null;  // app_settings.signup
 let usersAvailable = true;
+let requests = [];          // requêtes des utilisateurs (table user_requests)
+let requestsAvailable = true;
 const refreshPool = () => poolRender?.(); // false tant que la migration « categories » n'est pas appliquée
 let uploading = 0;
 
@@ -357,6 +364,9 @@ async function load() {
   const us = await sb.from("profiles").select("*").order("created_at", { ascending: false });
   usersAvailable = !us.error;
   users = us.data || [];
+  const rq = await sb.from("user_requests").select("*").order("created_at", { ascending: false }).limit(300);
+  requestsAvailable = !rq.error;
+  requests = rq.data || [];
   const ss = await sb.from("app_settings").select("value").eq("key", "signup").maybeSingle();
   signupSettings = ss.data?.value || { notify: true, recipient: null, fields: ["name", "email", "created_at"] };
 
@@ -410,6 +420,10 @@ function renderList() {
       h("button", { onclick: () => renderEditor(newTitle("serie")) }, "+ Série"),
       h("button", { onclick: () => renderEditor(newTitle("film")) }, "+ Film"),
     ),
+    requestsAvailable ? collapsible(requestsCard(), "requests", false, () => {
+      const n = requests.filter((r) => r.status === "new").length;
+      return `${requests.length} requête${requests.length > 1 ? "s" : ""}${n ? ` · ${n} nouvelle${n > 1 ? "s" : ""}` : ""}`;
+    }) : "",
     usersAvailable ? collapsible(usersCard(), "users", false, () => {
       const n = users.filter((u) => u.status === "blocked").length;
       return `${users.length} compte${users.length > 1 ? "s" : ""}${n ? ` · ${n} suspendu${n > 1 ? "s" : ""}` : ""}`;
@@ -720,6 +734,79 @@ function usersCard() {
         } catch (e) { fail(e); }
       } }, "Supprimer") : "",
     );
+  }
+
+  render();
+  return card;
+}
+
+// ---------------------------------------------------------------- requêtes des utilisateurs
+const REQ_KIND = { request: "Série / film", feedback: "Avis", bug: "Problème", other: "Autre" };
+const REQ_STATUS = { new: "nouvelle", seen: "vue", done: "traitée" };
+
+/** Demandes de séries / films, avis, problèmes envoyés depuis l'app. Réponse visible dans l'app. */
+function requestsCard() {
+  const card = h("div", { class: "card" });
+  let filter = "open"; // open (nouvelles + vues) | done | all
+  let kind = "";       // "" = tous les types
+  const byUser = () => Object.fromEntries(users.map((u) => [u.user_id, u]));
+
+  async function update(r, patch, msg) {
+    const { error } = await sb.from("user_requests").update(patch).eq("id", r.id);
+    if (error) return fail(error);
+    Object.assign(r, patch);
+    render();
+    if (msg) toast(msg);
+  }
+
+  const render = () => {
+    const who = byUser();
+    const list = requests.filter((r) =>
+      (filter === "all" || (filter === "done" ? r.status === "done" : r.status !== "done")) && (!kind || r.kind === kind));
+    const chip = (label, on, onclick) => h("button", { class: "chip" + (on ? " on" : ""), onclick }, label);
+    card.replaceChildren(
+      h("div", { class: "row" }, h("h3", { style: { flex: 1 } }, "Requêtes")),
+      h("div", { class: "row", style: { marginTop: "12px", gap: "8px" } },
+        chip("À traiter", filter === "open", () => { filter = "open"; render(); }),
+        chip("Traitées", filter === "done", () => { filter = "done"; render(); }),
+        chip("Toutes", filter === "all", () => { filter = "all"; render(); }),
+        h("span", { style: { width: "12px" } }),
+        chip("Tous types", !kind, () => { kind = ""; render(); }),
+        ...Object.entries(REQ_KIND).map(([k, label]) => chip(label, kind === k, () => { kind = kind === k ? "" : k; render(); })),
+      ),
+      list.length ? h("div", { style: { marginTop: "8px" } }, ...list.map((r) => requestRow(r, who[r.user_id])))
+        : h("p", { class: "muted", style: { marginTop: "16px" } }, "Aucune requête ici."),
+    );
+  };
+
+  function requestRow(r, u) {
+    const date = new Date(r.created_at).toLocaleString("fr-FR", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" });
+    const row = h("div", { class: "user req" },
+      h("div", { class: "who" },
+        h("b", {}, REQ_KIND[r.kind] || r.kind), " ",
+        h("span", { class: "muted" }, "— ", u ? (u.name || u.email) : "compte supprimé"),
+        h("small", {}, [u?.email, date, r.app_version && "v" + r.app_version].filter(Boolean).join(" · ")),
+      ),
+      h("span", { class: "st " + r.status }, REQ_STATUS[r.status] || r.status),
+      r.status !== "seen" && r.status !== "done" ? h("button", { class: "link", onclick: () => update(r, { status: "seen" }) }, "Marquer vue") : "",
+      r.status !== "done" ? h("button", { class: "link", onclick: () => update(r, { status: "done" }, "Requête traitée") }, "Traitée") : "",
+      r.status === "done" ? h("button", { class: "link", onclick: () => update(r, { status: "seen" }) }, "Rouvrir") : "",
+      h("button", { class: "link", onclick: () => {
+        const txt = prompt("Réponse affichée dans l'app (vide = aucune réponse) :", r.reply || "");
+        if (txt === null) return;
+        const reply = txt.trim() || null;
+        update(r, reply ? { reply, status: r.status === "new" ? "seen" : r.status } : { reply }, reply ? "Réponse enregistrée" : "Réponse retirée");
+      } }, r.reply ? "Modifier la réponse" : "Répondre"),
+      h("button", { class: "link", style: { color: "var(--danger)" }, onclick: async () => {
+        if (!confirm("Supprimer cette requête ?")) return;
+        const { error } = await sb.from("user_requests").delete().eq("id", r.id);
+        if (error) return fail(error);
+        requests = requests.filter((x) => x !== r); render(); toast("Requête supprimée");
+      } }, "Supprimer"),
+      h("div", { class: "msg" }, r.message),
+      r.reply ? h("div", { class: "reply" }, "↳ Ta réponse : ", r.reply) : "",
+    );
+    return row;
   }
 
   render();
