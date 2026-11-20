@@ -43,7 +43,7 @@ returns jsonb language sql stable security definer set search_path = '' as $$
     'heavy_factor', 3,              -- gros consommateur : > 3 × la médiane sur 7 jours…
     'heavy_min_minutes', 900,       -- …et plus de 15 h sur 7 jours
     'heavy_penalty', 0.5,           -- quota journalier multiplié par 0,5
-    'admins_exempt', false          -- les admins sont limités comme tout le monde
+    'admins_exempt', true           -- (obsolète) l'administrateur n'est jamais limité
   ) || coalesce((select value from public.app_settings where key = 'limits'), '{}'::jsonb);
 $$;
 
@@ -161,6 +161,7 @@ declare
   v_cost    bigint; v_min numeric;
   v_on      boolean := coalesce((s->>'enabled')::boolean, true);
   v_userchk boolean;
+  v_admin   boolean := public.is_admin();  -- l'administrateur télécharge sans aucune limite (usage quand même compté)
   v_daily numeric; v_used numeric; v_used_m numeric; v_files int; v_burst int; v_mine bigint;
   v_late    timestamptz;
   v_oldest  timestamptz;
@@ -189,7 +190,7 @@ begin
     v_bcap := coalesce(b.daily_class_b, 2250);
   end if;
   v_ttl := coalesce(b.url_ttl, case when v_billable then 10800 else 21600 end);
-  v_userchk := v_on and not (coalesce((s->>'admins_exempt')::boolean, false) and public.is_admin());
+  v_userchk := v_on and not v_admin;
 
   perform pg_advisory_xact_lock(hashtextextended('xyd-dl:' || v_uid::text, 0));
   if v_billable and v_on then
@@ -202,7 +203,7 @@ begin
   -- Reprise (même vidéo, même jour) : gratuite, sauf re-téléchargement complet ou trop de reprises.
   if found and g.regrants < (s->>'resume_grants')::int and not (p_offset = 0 and g.hwm > 0) then
     if v_billable and v_on then
-      if u.class_b + 1 > v_bcap then
+      if u.class_b + 1 > v_bcap and not v_admin then
         return public.dl_refuse(v_uid, v_bill, 'transactions', 429,
           'Ce stockage a atteint son nombre de requêtes gratuites pour aujourd''hui. Le téléchargement reprendra demain.', v_reset);
       end if;
@@ -257,7 +258,7 @@ begin
 
   -- Couches 1 et 3 : stockage facturable.
   if v_billable and v_on then
-    if u.egress_bytes + v_cost > v_cap or u.class_b + 1 > v_bcap then
+    if (u.egress_bytes + v_cost > v_cap or u.class_b + 1 > v_bcap) and not v_admin then
       return public.dl_refuse(v_uid, v_bill, 'budget', 429,
         'Cette vidéo est sur un stockage au quota gratuit limité, épuisé pour aujourd''hui. Elle sera disponible demain.', v_reset);
     end if;
@@ -320,7 +321,7 @@ begin
   select coalesce(sum(minutes), 0) into v_used_m from public.download_grants
    where user_id = v_uid and day >= date_trunc('month', public.dl_today())::date;
   return jsonb_build_object(
-    'enabled', coalesce((s->>'enabled')::boolean, true),
+    'enabled', coalesce((s->>'enabled')::boolean, true) and not public.is_admin(),
     'daily_minutes', public.dl_daily_quota(v_uid, s), 'used_minutes', v_used,
     'monthly_minutes', (s->>'user_monthly_minutes')::numeric, 'used_month_minutes', v_used_m,
     'daily_files', (s->>'user_daily_files')::int, 'used_files', v_files,
