@@ -9,4 +9,4 @@ alter table public.announcements add column if not exists layout jsonb not null 
 
 alter table public.announcements drop constraint if exists announcements_ratio_check;
 alter table public.announcements add constraint announcements_ratio_check
-  check (ratio in ('portrait', 'square', 'landscape', 'wide'));
+  check (ratio in ('portrait', 'square', 'landscape', 'wide', 'free')); -- « free » : voir 20261120180000 (rejouable dans l'ordre)
