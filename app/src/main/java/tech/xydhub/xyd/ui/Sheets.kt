@@ -1,6 +1,7 @@
 package tech.xydhub.xyd.ui
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -73,6 +74,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -435,8 +437,6 @@ fun DownloadsSheet(onPlay: (String) -> Unit, onDismiss: () -> Unit) {
         items.values.groupBy { if (it.isFilm) it.mediaId else it.titleId }
             .values.sortedByDescending { g -> g.maxOf { it.addedAt } }
     }
-    val hasSeries = groups.any { !it.first().isFilm }
-    val hasFilms = groups.any { it.first().isFilm }
     val shown = groups.filter {
         when (filter) { 1 -> !it.first().isFilm; 2 -> it.first().isFilm; else -> true }
     }
@@ -466,48 +466,74 @@ fun DownloadsSheet(onPlay: (String) -> Unit, onDismiss: () -> Unit) {
                     )
                 }
             }
-            if (hasSeries && hasFilms) {
-                Row(Modifier.padding(horizontal = 20.dp, vertical = 4.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    listOf("Tout", "Séries", "Films").forEachIndexed { i, label ->
-                        FilterChip(
-                            selected = filter == i, onClick = { filter = i }, label = { Text(label) },
-                            colors = FilterChipDefaults.filterChipColors(
-                                selectedContainerColor = Xyd.Grey, selectedLabelColor = Xyd.Black, labelColor = Xyd.Grey,
-                            ),
-                            border = FilterChipDefaults.filterChipBorder(enabled = true, selected = filter == i, borderColor = Xyd.Line),
-                        )
+            LazyColumn(Modifier.fillMaxWidth(), contentPadding = PaddingValues(bottom = 24.dp)) {
+                // Deux dossiers en verre côte à côte : résumé visuel + filtre de la liste (toucher = filtrer, re-toucher = tout).
+                item(key = "folders") {
+                    Row(
+                        Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, top = 6.dp),
+                        horizontalArrangement = Arrangement.spacedBy(14.dp),
+                    ) {
+                        listOf(1 to "Séries", 2 to "Films").forEachIndexed { i, (f, label) ->
+                            val list = items.values.filter { if (f == 1) !it.isFilm else it.isFilm }
+                            val done = list.filter { it.status == DlStatus.DONE }
+                            val running = list.count { it.status == DlStatus.RUNNING || it.status == DlStatus.QUEUED }
+                            val titles = list.map { it.titleId }.distinct().size
+                            val meta = when {
+                                list.isEmpty() -> "Vide"
+                                f == 1 -> "$titles série${if (titles > 1) "s" else ""} · ${done.size} ép." +
+                                    (fmtSize(done.sumOf { it.sizeBytes }).takeIf { it.isNotBlank() }?.let { " · $it" } ?: "")
+                                else -> "${done.size} film${if (done.size > 1) "s" else ""}" +
+                                    (fmtSize(done.sumOf { it.sizeBytes }).takeIf { it.isNotBlank() }?.let { " · $it" } ?: "")
+                            }
+                            DownloadFolder(
+                                label = label, meta = meta, running = running,
+                                images = list.sortedByDescending { it.addedAt }.distinctBy { it.titleId }.map { it.backdrop ?: it.poster },
+                                selected = filter == f, enabled = list.isNotEmpty(),
+                                onClick = { filter = if (filter == f) 0 else f },
+                                modifier = Modifier.weight(1f), appearDelay = 80L + i * 140L,
+                            )
+                        }
                     }
                 }
-            }
-            if (items.isEmpty()) {
-                Text(
-                    "Aucun téléchargement.\nOuvre une série ou un film et appuie sur Télécharger.",
-                    color = Xyd.Muted, modifier = Modifier.padding(20.dp), lineHeight = 20.sp,
-                )
-            }
-            LazyColumn(Modifier.fillMaxWidth(), contentPadding = PaddingValues(bottom = 24.dp)) {
+                item(key = "folders-hint") {
+                    Text(
+                        when (filter) {
+                            1 -> "Séries uniquement · touche à nouveau le dossier pour tout voir"
+                            2 -> "Films uniquement · touche à nouveau le dossier pour tout voir"
+                            else -> if (items.isEmpty()) "Aucun téléchargement. Ouvre une série ou un film et appuie sur Télécharger."
+                            else "Touche un dossier pour n'afficher que ses vidéos"
+                        },
+                        color = Xyd.Muted, fontSize = 12.sp, lineHeight = 17.sp, textAlign = TextAlign.Center,
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 10.dp),
+                    )
+                }
                 shown.forEach { group ->
                     val first = group.first()
                     val key = if (first.isFilm) first.mediaId else first.titleId
                     if (first.isFilm) {
-                        item(key = key) { FilmDownloadRow(first, onClick = { act(first) }) }
+                        item(key = key) {
+                            Box(Modifier.glassCard()) { FilmDownloadRow(first, onClick = { act(first) }) }
+                        }
                     } else {
                         val active = group.any { it.status == DlStatus.RUNNING || it.status == DlStatus.QUEUED }
                         val open = expanded[key] ?: (active || shown.size == 1)
+                        // Toute la série (en-tête + épisodes) dans une seule carte en verre.
                         item(key = key) {
-                            SeriesDownloadHeader(group, open, onToggle = { expanded[key] = !open })
-                        }
-                        if (open) {
-                            group.groupBy { it.seasonNumber }.toSortedMap().forEach { (season, eps) ->
-                                item(key = "$key-s$season") {
-                                    Text(
-                                        "SAISON $season", color = Xyd.Muted, fontSize = 11.sp, letterSpacing = 1.sp,
-                                        fontWeight = FontWeight.SemiBold,
-                                        modifier = Modifier.padding(start = 36.dp, top = 10.dp, bottom = 2.dp),
-                                    )
-                                }
-                                eps.sortedBy { it.episodeNumber }.forEach { d ->
-                                    item(key = d.mediaId) { EpisodeDownloadRow(d, onClick = { act(d) }) }
+                            Column(Modifier.glassCard()) {
+                                SeriesDownloadHeader(group, open, onToggle = { expanded[key] = !open })
+                                if (open) {
+                                    Box(Modifier.padding(horizontal = 12.dp).fillMaxWidth().height(1.dp).background(Color.White.copy(alpha = 0.07f)))
+                                    group.groupBy { it.seasonNumber }.toSortedMap().forEach { (season, eps) ->
+                                        Text(
+                                            "SAISON $season", color = Xyd.Muted, fontSize = 11.sp, letterSpacing = 1.sp,
+                                            fontWeight = FontWeight.SemiBold,
+                                            modifier = Modifier.padding(start = 14.dp, top = 10.dp, bottom = 2.dp),
+                                        )
+                                        eps.sortedBy { it.episodeNumber }.forEach { d ->
+                                            EpisodeDownloadRow(d, onClick = { act(d) })
+                                        }
+                                    }
+                                    Spacer(Modifier.height(6.dp))
                                 }
                             }
                         }
@@ -517,6 +543,14 @@ fun DownloadsSheet(onPlay: (String) -> Unit, onDismiss: () -> Unit) {
         }
     }
 }
+
+/** Carte en verre (blanc translucide, bords arrondis) : délimite chaque téléchargement sur le fond noir. */
+private fun Modifier.glassCard(): Modifier = this
+    .padding(horizontal = 16.dp, vertical = 5.dp)
+    .fillMaxWidth()
+    .clip(RoundedCornerShape(16.dp))
+    .background(Brush.verticalGradient(listOf(Color.White.copy(alpha = 0.075f), Color.White.copy(alpha = 0.04f))))
+    .border(1.dp, Color.White.copy(alpha = 0.10f), RoundedCornerShape(16.dp))
 
 private fun statusText(d: DownloadItem): String = when (d.status) {
     DlStatus.DONE -> fmtSize(d.sizeBytes)
@@ -540,10 +574,10 @@ private fun DownloadProgress(d: DownloadItem) {
 @Composable
 private fun FilmDownloadRow(d: DownloadItem, onClick: () -> Unit) {
     Row(
-        Modifier.fillMaxWidth().clickable(onClick = onClick).padding(start = 20.dp, end = 4.dp, top = 8.dp, bottom = 8.dp),
+        Modifier.fillMaxWidth().clickable(onClick = onClick).padding(start = 10.dp, end = 2.dp, top = 10.dp, bottom = 10.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        RemoteImage(d.backdrop ?: d.poster, Modifier.width(96.dp).aspectRatio(16f / 9f).clip(RoundedCornerShape(6.dp)))
+        RemoteImage(d.backdrop ?: d.poster, Modifier.width(96.dp).aspectRatio(16f / 9f).clip(RoundedCornerShape(9.dp)))
         Column(Modifier.weight(1f).padding(start = 12.dp)) {
             Text(d.titleName, fontSize = 15.sp, fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis)
             Text("Film · " + statusText(d), color = if (d.status == DlStatus.FAILED) Xyd.Danger else Xyd.Muted, fontSize = 12.sp, maxLines = 2)
@@ -562,10 +596,10 @@ private fun SeriesDownloadHeader(group: List<DownloadItem>, open: Boolean, onTog
     val size = group.filter { it.status == DlStatus.DONE }.sumOf { it.sizeBytes }
     var confirm by remember { mutableStateOf(false) }
     Row(
-        Modifier.fillMaxWidth().clickable(onClick = onToggle).padding(start = 20.dp, end = 4.dp, top = 10.dp, bottom = 6.dp),
+        Modifier.fillMaxWidth().clickable(onClick = onToggle).padding(start = 10.dp, end = 2.dp, top = 10.dp, bottom = 10.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        RemoteImage(first.backdrop ?: first.poster, Modifier.width(96.dp).aspectRatio(16f / 9f).clip(RoundedCornerShape(6.dp)))
+        RemoteImage(first.backdrop ?: first.poster, Modifier.width(96.dp).aspectRatio(16f / 9f).clip(RoundedCornerShape(9.dp)))
         Column(Modifier.weight(1f).padding(start = 12.dp)) {
             Text(first.titleName, fontSize = 15.sp, fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis)
             val parts = listOfNotNull(
@@ -592,7 +626,7 @@ private fun SeriesDownloadHeader(group: List<DownloadItem>, open: Boolean, onTog
 @Composable
 private fun EpisodeDownloadRow(d: DownloadItem, onClick: () -> Unit) {
     Row(
-        Modifier.fillMaxWidth().clickable(onClick = onClick).padding(start = 36.dp, end = 4.dp, top = 4.dp, bottom = 4.dp),
+        Modifier.fillMaxWidth().clickable(onClick = onClick).padding(start = 14.dp, end = 2.dp, top = 4.dp, bottom = 4.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Text("${d.episodeNumber}", color = Xyd.Muted, fontWeight = FontWeight.SemiBold, modifier = Modifier.width(28.dp))
