@@ -624,7 +624,7 @@ private fun FilterPill(label: String, cover: String?, on: Boolean, onClick: () -
                                 rotationZ = -7f + 3f * lift
                                 transformOrigin = androidx.compose.ui.graphics.TransformOrigin(0.5f, 1f)
                                 shadowElevation = 6f * density
-                                shape = RoundedCornerShape(6.dp); clip = true
+                                this.shape = RoundedCornerShape(6.dp); clip = true
                             }
                             .border(1.dp, Color.White.copy(alpha = 0.22f), RoundedCornerShape(6.dp)),
                     ) { RemoteImage(cover, Modifier.matchParentSize()) }
