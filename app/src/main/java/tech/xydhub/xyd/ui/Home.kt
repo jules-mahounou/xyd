@@ -187,7 +187,7 @@ fun HomeScreen(onPlay: (String) -> Unit) {
     }
 
     PullToRefreshBox(isRefreshing = loading, onRefresh = { Repo.refresh() }, modifier = Modifier.fillMaxSize()) {
-        LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 32.dp)) {
+        LazyColumn(Modifier.fillMaxSize()) {
             when {
                 catalog.isEmpty() && session != null && (loading || error == null) -> {
                     item { header() }
@@ -287,6 +287,9 @@ fun HomeScreen(onPlay: (String) -> Unit) {
                     )
                 }
             }
+
+            // Tout en bas : traînée de lumière bleue animée, jusque sous la barre de navigation.
+            item(key = "aurora") { AuroraBand(Modifier.padding(top = 28.dp)) }
         }
     }
 
