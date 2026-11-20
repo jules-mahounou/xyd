@@ -207,6 +207,8 @@ object Supabase {
             minVersionCode = o.optInt("min_version_code"),
             apkUrl = o.optString("apk_url"),
             changelog = if (o.isNull("changelog")) "" else o.optString("changelog"),
+            sizeBytes = o.optLong("size_bytes", 0),
+            imageUrl = o.optString("image_url").takeIf { it.startsWith("http") },
         )
     }
 }

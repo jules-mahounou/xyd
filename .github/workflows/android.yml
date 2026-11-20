@@ -152,14 +152,22 @@ jobs:
           FTP_PASSWORD: ${{ secrets.FTP_PASSWORD }}
           FTP_DIR: ${{ vars.FTP_DIR }}
           COMMIT_MSG: ${{ github.event.head_commit.message }}
+          SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
         run: |
           if [ -z "$FTP_HOST" ]; then echo "::warning::FTP non configuré : bêta non mise en ligne."; exit 0; fi
           DIR="${FTP_DIR#/}"; DIR="${DIR%/}"; [ "$DIR" = "." ] && DIR=""
           up() { curl -sS --fail --ftp-create-dirs --user "$FTP_USER:$FTP_PASSWORD" -T "$1" "ftp://$FTP_HOST/${DIR:+$DIR/}$2"; }
           CODE=${{ steps.v.outputs.code }}
+          # La bêta montre le visuel préparé pour la prochaine version : aperçu avant publication.
+          IMG=""
+          if [ -n "$SERVICE_KEY" ] && [ -n "$SUPABASE_URL" ]; then
+            AUTH=(); [[ "$SERVICE_KEY" == eyJ* ]] && AUTH=(-H "Authorization: Bearer $SERVICE_KEY")
+            IMG=$(curl -sS "$SUPABASE_URL/rest/v1/app_settings?key=eq.next_release&select=value" -H "apikey: $SERVICE_KEY" "${AUTH[@]}" | jq -r '.[0].value.image_url // empty' 2>/dev/null || true)
+          fi
           jq -n --argjson c "$CODE" --arg n "${{ steps.v.outputs.name }}-beta" \
             --arg u "https://xydhub.tech/xyd-beta.apk?v=$CODE" --arg l "$(printf '%s' "$COMMIT_MSG" | head -1)" \
-            '{version_code:$c, version_name:$n, apk_url:$u, changelog:$l}' > xyd-beta.json
+            --argjson s "$(stat -c%s xyd-beta.apk)" --arg i "$IMG" \
+            '{version_code:$c, version_name:$n, apk_url:$u, changelog:$l, size_bytes:$s, image_url:(if $i == "" then null else $i end)}' > xyd-beta.json
           cat xyd-beta.json
           # APK d'abord, puis le fichier de version : l'appli ne voit jamais une version dont l'APK n'est pas encore en ligne.
           up xyd-beta.apk xyd-beta.apk
@@ -202,14 +210,23 @@ jobs:
           if [ -z "$SERVICE_KEY" ]; then echo "::warning::SUPABASE_SERVICE_ROLE_KEY absent : ajoute la ligne app_versions à la main."; exit 0; fi
           CODE=${{ steps.v.outputs.code }}
           MIN=0; [ "$FORCE" = "true" ] && MIN=$CODE
-          BODY=$(jq -n --argjson c "$CODE" --arg n "${{ steps.v.outputs.name }}" --argjson m "$MIN" \
-            --arg u "$APK_URL?v=$CODE" --arg l "$CHANGELOG" \
-            '{version_code:$c, version_name:$n, min_version_code:$m, apk_url:$u, changelog:$l}')
           AUTH=()
           # Les clés « sb_secret_… » ne sont pas des JWT : uniquement l'en-tête apikey.
           [[ "$SERVICE_KEY" == eyJ* ]] && AUTH=(-H "Authorization: Bearer $SERVICE_KEY")
+          # Visuel + notes préparés dans l'admin (« Mises à jour → Prochaine version ») ; les notes saisies ici priment.
+          NEXT=$(curl -sS "$SUPABASE_URL/rest/v1/app_settings?key=eq.next_release&select=value" -H "apikey: $SERVICE_KEY" "${AUTH[@]}" | jq -c '.[0].value // {}' 2>/dev/null || echo '{}')
+          IMG=$(echo "$NEXT" | jq -r '.image_url // empty')
+          [ -n "$CHANGELOG" ] || CHANGELOG=$(echo "$NEXT" | jq -r '.changelog // empty')
+          SIZE=$(stat -c%s xyd.apk)
+          BODY=$(jq -n --argjson c "$CODE" --arg n "${{ steps.v.outputs.name }}" --argjson m "$MIN" \
+            --arg u "$APK_URL?v=$CODE" --arg l "$CHANGELOG" --argjson s "$SIZE" --arg i "$IMG" \
+            '{version_code:$c, version_name:$n, min_version_code:$m, apk_url:$u, changelog:$l, size_bytes:$s, image_url:(if $i == "" then null else $i end)}')
           curl -sS --fail -X POST "$SUPABASE_URL/rest/v1/app_versions" \
             -H "apikey: $SERVICE_KEY" "${AUTH[@]}" \
             -H "Content-Type: application/json" -H "Prefer: resolution=merge-duplicates,return=minimal" \
             -d "$BODY"
-          echo "Version $CODE déclarée (min_version_code=$MIN)"
+          echo "Version $CODE déclarée (min_version_code=$MIN, $SIZE octets, visuel: ${IMG:-aucun})"
+          # La prochaine version repart d'une page blanche.
+          curl -sS -X POST "$SUPABASE_URL/rest/v1/app_settings" -H "apikey: $SERVICE_KEY" "${AUTH[@]}" \
+            -H "Content-Type: application/json" -H "Prefer: resolution=merge-duplicates,return=minimal" \
+            -d '{"key":"next_release","value":{}}' || true

@@ -1,5 +1,15 @@
 package tech.xydhub.xyd.ui
 
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -52,21 +62,49 @@ fun UpdateGate() {
     val forced = BuildConfig.VERSION_CODE < info.minVersionCode
     if (!forced && dismissed == info.versionCode) return
 
+    // Taille de l'APK : fournie par la publication, sinon demandée au serveur (en-tête Content-Length).
+    val size by androidx.compose.runtime.produceState(info.sizeBytes, info.apkUrl) {
+        if (value <= 0L) value = Updater.remoteSize(info.apkUrl)
+    }
+
     XSheet(onDismiss = { dismissed = info.versionCode }, locked = forced) {
+        Box(Modifier.fillMaxWidth()) {
+        // Fond : même traînée bleue animée que le modal de connexion, collée en bas.
+        AuroraBand(Modifier.align(Alignment.BottomCenter), height = 150.dp)
         Column(
-            Modifier.fillMaxWidth().navigationBarsPadding().padding(24.dp),
+            Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).navigationBarsPadding().padding(24.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
-            Logo(52.dp)
+            // Visuel de la version (affiche portrait préparée dans l'admin), sinon le logo.
+            if (info.imageUrl != null) {
+                Box(
+                    Modifier.fillMaxWidth(0.62f).aspectRatio(2f / 3f).clip(RoundedCornerShape(16.dp))
+                        .border(1.dp, Color.White.copy(alpha = 0.12f), RoundedCornerShape(16.dp)),
+                ) {
+                    RemoteImage(info.imageUrl, Modifier.fillMaxSize())
+                    Box(Modifier.fillMaxSize().background(Brush.verticalGradient(0.6f to Color.Transparent, 1f to Color(0x99000000))))
+                }
+            } else {
+                Logo(52.dp)
+            }
             Spacer(Modifier.height(16.dp))
             Text(
                 if (forced) "Mise à jour obligatoire" else "Mise à jour disponible",
                 fontSize = 22.sp, fontWeight = FontWeight.SemiBold,
             )
             Text(
-                "Version ${info.versionName.ifBlank { info.versionCode.toString() }}",
+                listOfNotNull(
+                    "Version ${info.versionName.ifBlank { info.versionCode.toString() }}",
+                    fmtSize(size).takeIf { it.isNotBlank() }?.let { "$it à télécharger" },
+                ).joinToString(" · "),
                 color = Xyd.Muted, fontSize = 13.sp, modifier = Modifier.padding(top = 4.dp),
             )
+            if (size in 1..5_000_000) {
+                Text(
+                    "Moins qu'une photo : la mise à jour est rapide, même en 3G.",
+                    color = Xyd.Muted, fontSize = 12.sp, textAlign = TextAlign.Center, modifier = Modifier.padding(top = 2.dp),
+                )
+            }
             if (info.changelog.isNotBlank()) {
                 Text(
                     info.changelog, color = Xyd.Grey, fontSize = 14.sp, lineHeight = 20.sp,
@@ -82,51 +120,43 @@ fun UpdateGate() {
             }
             Spacer(Modifier.height(24.dp))
 
-            when (val s = state) {
-                is Updater.State.Downloading -> {
-                    LinearProgressIndicator(
-                        progress = { s.fraction }, modifier = Modifier.fillMaxWidth().height(4.dp),
-                        color = Xyd.Grey, trackColor = Xyd.Line, drawStopIndicator = {},
-                    )
-                    Text("${(s.fraction * 100).toInt()} %", color = Xyd.Muted, fontSize = 13.sp, modifier = Modifier.padding(top = 8.dp))
-                }
-                else -> {
-                    if (s is Updater.State.Error) {
-                        Text(s.message, color = Xyd.Danger, fontSize = 13.sp, modifier = Modifier.padding(bottom = 12.dp))
-                    }
-                    if (!canInstall) {
-                        Text(
-                            "Autorise d'abord xyd à installer des applications (une seule fois).",
-                            color = Xyd.Muted, fontSize = 13.sp, textAlign = TextAlign.Center,
-                            modifier = Modifier.padding(bottom = 12.dp),
-                        )
-                    }
-                    Button(
-                        onClick = {
-                            when {
-                                !canInstall -> Updater.openInstallPermission(ctx)
-                                s is Updater.State.Ready -> Updater.install(ctx)
-                                else -> scope.launch { Updater.download(ctx, info.apkUrl) }
-                            }
-                        },
-                        modifier = Modifier.fillMaxWidth().height(52.dp),
-                        shape = RoundedCornerShape(12.dp),
-                        colors = ButtonDefaults.buttonColors(containerColor = Xyd.Grey, contentColor = Xyd.Black),
-                    ) {
-                        Text(
-                            when {
-                                !canInstall -> "Autoriser l'installation"
-                                s is Updater.State.Ready -> "Installer"
-                                else -> "Mettre à jour"
-                            },
-                            fontWeight = FontWeight.SemiBold,
-                        )
-                    }
-                    if (!forced) {
-                        TextButton(onClick = { dismissed = info.versionCode }) { Text("Plus tard", color = Xyd.Muted) }
-                    }
-                }
+            val s = state
+            if (s is Updater.State.Error) {
+                Text(s.message, color = Xyd.Danger, fontSize = 13.sp, modifier = Modifier.padding(bottom = 12.dp))
             }
+            if (!canInstall && s !is Updater.State.Downloading) {
+                Text(
+                    "Autorise d'abord xyd à installer des applications (une seule fois).",
+                    color = Xyd.Muted, fontSize = 13.sp, textAlign = TextAlign.Center,
+                    modifier = Modifier.padding(bottom = 12.dp),
+                )
+            }
+            // Bouton « Surge » : le liquide suit le téléchargement de la mise à jour.
+            SurgeButton(
+                label = when {
+                    s is Updater.State.Downloading -> "Téléchargement · ${(s.fraction * 100).toInt()} %"
+                    !canInstall -> "Autoriser l'installation"
+                    s is Updater.State.Ready -> "Installer"
+                    else -> "Mettre à jour" + (fmtSize(size).takeIf { it.isNotBlank() }?.let { " · $it" } ?: "")
+                },
+                onClick = {
+                    when {
+                        s is Updater.State.Downloading -> {}
+                        !canInstall -> Updater.openInstallPermission(ctx)
+                        s is Updater.State.Ready -> Updater.install(ctx)
+                        else -> scope.launch { Updater.download(ctx, info.apkUrl) }
+                    }
+                },
+                modifier = Modifier.fillMaxWidth(),
+                height = 52.dp,
+                fill = when (s) { is Updater.State.Downloading -> s.fraction; is Updater.State.Ready -> 1f; else -> 0f },
+                active = s is Updater.State.Downloading,
+                moving = s is Updater.State.Downloading,
+            )
+            if (!forced && s !is Updater.State.Downloading) {
+                TextButton(onClick = { dismissed = info.versionCode }) { Text("Plus tard", color = Xyd.Muted) }
+            }
+        }
         }
     }
 }

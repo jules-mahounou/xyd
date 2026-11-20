@@ -413,6 +413,8 @@ let signupSettings = null;  // app_settings.signup
 let usersAvailable = true;
 let requests = [];          // requêtes des utilisateurs (table user_requests)
 let requestsAvailable = true;
+let versions = [];          // versions publiées (table app_versions)
+let nextRelease = {};       // app_settings.next_release : visuel + notes de la prochaine version
 let ads = [];               // annonces (table announcements)
 let adsAvailable = true;
 const refreshPool = () => { poolRender?.(); renderNav(); };
@@ -682,7 +684,7 @@ function pickFiles(accept, multiple) {
 async function load() {
   // Toutes les requêtes partent en même temps (au lieu de l'une après l'autre).
   const today = new Date().toISOString().slice(0, 10); // jour UTC, comme les plafonds Backblaze
-  const [tq, st0, ud, lim, ds, us, rq, ss, cats0, an] = await Promise.all([
+  const [tq, st0, ud, lim, ds, us, rq, ss, cats0, an, av, nr] = await Promise.all([
     sb.from("titles").select("*, seasons(*, episodes(*))").order("sort").order("created_at", { ascending: false }),
     sb.from("storage_backends").select(STORE_COLS).order("priority").order("created_at"),
     sb.from("storage_usage_daily").select("*").eq("day", today),
@@ -693,7 +695,11 @@ async function load() {
     sb.from("app_settings").select("value").eq("key", "signup").maybeSingle(),
     sb.from("categories").select("*, title_categories(title_id, position), announcement_categories(announcement_id, position)").order("sort").order("created_at"),
     sb.from("announcements").select("*").order("created_at", { ascending: false }),
+    sb.from("app_versions").select("*").order("version_code", { ascending: false }).limit(20),
+    sb.from("app_settings").select("value").eq("key", "next_release").maybeSingle(),
   ]);
+  versions = av.data || [];
+  nextRelease = nr.data?.value || {};
   // Migration « announcements » pas encore appliquée : sections sans annonces.
   const cats = cats0.error ? await sb.from("categories").select("*, title_categories(title_id, position)").order("sort").order("created_at") : cats0;
   adsAvailable = !an.error;
@@ -763,6 +769,7 @@ const PAGES = [
   { id: "utilisateurs", label: "Utilisateurs", ic: "users", show: () => usersAvailable },
   { sec: "Système" },
   { id: "telechargements", label: "Téléchargements", ic: "download", show: () => limitsAvailable },
+  { id: "versions", label: "Mises à jour", ic: "upload" },
   { id: "stockages", label: "Stockages", ic: "db", show: () => storagesAvailable },
   { id: "categories", label: "Catégories", ic: "tag", show: () => catsAvailable },
 ];
@@ -822,6 +829,7 @@ function route() {
     }
     case "nouveau": return renderEditor(newTitle(arg === "film" ? "film" : "serie"));
     case "annonces": return simplePage(page, adsCard());
+    case "versions": return simplePage(page, versionsCard());
     case "requetes": return simplePage(page, requestsCard());
     case "utilisateurs": return simplePage(page, usersCard());
     case "telechargements": return simplePage(page, downloadsCard());
@@ -831,6 +839,7 @@ function route() {
   }
 }
 const PAGE_INFO = {
+  versions: ["Mises à jour", "Visuel et notes affichés dans le modal de mise à jour de l'app, taille de l'APK."],
   annonces: ["Annonces", "Image, GIF ou vidéo (portrait, carré, paysage, bandeau), texte et lien facultatifs, à placer dans les sections."],
   requetes: ["Requêtes", "Demandes de séries et films, avis et problèmes envoyés depuis l'app."],
   utilisateurs: ["Utilisateurs", "Comptes, statuts et mail d'inscription."],
@@ -1976,6 +1985,93 @@ function storageCard() {
     );
   }
 
+  render();
+  return card;
+}
+
+// ---------------------------------------------------------------- mises à jour (app_versions)
+/**
+ * « Prochaine version » : visuel portrait + notes préparés à l'avance (app_settings.next_release) ;
+ * la CI les recopie dans la version au moment de la publication. Les versions publiées restent modifiables.
+ */
+function versionsCard() {
+  const card = h("div");
+
+  /** Zone d'image portrait cliquable / déposable ; `set(url)` reçoit l'URL publique. */
+  const posterBox = (url, set) => {
+    const box = h("div", { class: "imgbox poster", title: "Visuel portrait (2:3)", style: { width: "150px" } });
+    const show = (u) => { box.style.backgroundImage = u ? `url("${u}")` : ""; box.textContent = u ? "" : "Visuel\n2:3\n(clic ou glisser)"; };
+    const put = async (file) => {
+      if (!file || !/^image\//.test(file.type)) return;
+      box.textContent = "Envoi…";
+      try { const u = await uploadImage(file, "releases", "ad"); show(u); await set(u); } catch (e) { show(url); fail(e); }
+    };
+    box.onclick = async () => put((await pickFiles("image/*"))[0]);
+    box.ondragover = (e) => { e.preventDefault(); box.style.borderColor = "var(--grey)"; };
+    box.ondragleave = () => (box.style.borderColor = "");
+    box.ondrop = (e) => { e.preventDefault(); box.style.borderColor = ""; put(e.dataTransfer.files[0]); };
+    show(url);
+    return box;
+  };
+
+  const saveNext = async (patch) => {
+    const value = { ...nextRelease, ...patch };
+    const { error } = await sb.from("app_settings").upsert({ key: "next_release", value });
+    if (error) return fail(error);
+    nextRelease = value; toast("Prochaine version : enregistré");
+  };
+
+  const render = () => {
+    const notes = h("textarea", { placeholder: "Ex : Nouveau design ! Carrousels animés, recherche, téléchargements plus clairs…" });
+    notes.value = nextRelease.changelog || "";
+    notes.onchange = () => saveNext({ changelog: notes.value.trim() });
+    const latest = versions[0];
+    card.replaceChildren(
+      h("div", { class: "cols", style: { marginTop: 0 } },
+        h("div", { class: "card" },
+          h("div", { class: "ptitle" }, h("h3", {}, "Prochaine version"), h("span", { class: "pill warn" }, "pas encore publiée")),
+          h("div", { class: "row", style: { alignItems: "flex-start", gap: "16px", flexWrap: "nowrap" } },
+            posterBox(nextRelease.image_url, (u) => saveNext({ image_url: u })),
+            h("div", { style: { flex: 1 } },
+              h("label", { style: { marginTop: 0 } }, "Notes de version"), notes,
+              nextRelease.image_url ? h("button", { class: "link", style: { marginTop: "6px" }, onclick: async () => { await saveNext({ image_url: null }); render(); } }, "Retirer le visuel") : "",
+            )),
+          h("p", { class: "muted", style: { fontSize: "12px", marginTop: "12px" } },
+            "Utilisés automatiquement à la prochaine publication (GitHub → Actions → Android → « Publier »). Les notes saisies dans GitHub, si tu en mets, remplacent celles-ci. La bêta montre déjà ce visuel dans son modal de mise à jour."),
+        ),
+        h("div", { class: "card" },
+          h("div", { class: "ptitle" }, h("h3", {}, "Version en ligne")),
+          latest ? h("div", {},
+            h("div", { class: "kpi", style: { border: 0, padding: 0 } },
+              h("span", { class: "v" }, latest.version_name || latest.version_code),
+              h("span", { class: "s" }, [`code ${latest.version_code}`, latest.size_bytes ? fmtSize(latest.size_bytes) : null,
+                latest.min_version_code >= latest.version_code ? "obligatoire" : "facultative", ago(latest.created_at)].filter(Boolean).join(" · "))),
+          ) : h("div", { class: "empty" }, "Aucune version publiée."),
+        ),
+      ),
+      versions.length ? h("div", { class: "card" },
+        h("div", { class: "ptitle" }, h("h3", {}, "Versions publiées")),
+        ...versions.map((v) => {
+          const ch = h("textarea", { style: { minHeight: "60px" } }); ch.value = v.changelog || "";
+          ch.onchange = async () => {
+            const { error } = await sb.from("app_versions").update({ changelog: ch.value.trim() }).eq("version_code", v.version_code);
+            error ? fail(error) : (v.changelog = ch.value.trim(), toast("Notes modifiées"));
+          };
+          return h("div", { class: "user", style: { alignItems: "flex-start" } },
+            posterBox(v.image_url, async (u) => {
+              const { error } = await sb.from("app_versions").update({ image_url: u }).eq("version_code", v.version_code);
+              error ? fail(error) : (v.image_url = u, toast("Visuel de la version modifié"));
+            }),
+            h("div", { class: "who" },
+              h("b", {}, `${v.version_name || v.version_code}`),
+              h("small", {}, [`code ${v.version_code}`, v.size_bytes ? fmtSize(v.size_bytes) : "taille inconnue",
+                v.min_version_code >= v.version_code ? "obligatoire" : "facultative", new Date(v.created_at).toLocaleString("fr-FR")].join(" · ")),
+              h("label", {}, "Notes"), ch),
+          );
+        }),
+      ) : "",
+    );
+  };
   render();
   return card;
 }

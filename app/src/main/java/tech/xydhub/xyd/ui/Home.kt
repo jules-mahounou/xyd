@@ -580,17 +580,18 @@ private fun Poster(t: Title, modifier: Modifier, onClick: (Title) -> Unit) {
  */
 @Composable
 private fun FilterPill(label: String, cover: String?, on: Boolean, onClick: () -> Unit) {
-    val shape = RoundedCornerShape(50)
+    // Rectangle aux coins juste arrondis (plus une pilule).
+    val shape = RoundedCornerShape(9.dp)
     val dim by androidx.compose.animation.core.animateFloatAsState(if (on) 0.28f else 0.62f, label = "pill-dim")
     Box(
-        Modifier.height(34.dp)
+        Modifier.height(36.dp)
             .then(if (on) Modifier.drawBehind {
                 // Halo bleu sous la pastille active.
                 drawRoundRect(
                     Brush.radialGradient(listOf(Color(0x664C6BFF), Color.Transparent), radius = size.width * 0.8f),
                     topLeft = androidx.compose.ui.geometry.Offset(-8.dp.toPx(), -6.dp.toPx()),
                     size = androidx.compose.ui.geometry.Size(size.width + 16.dp.toPx(), size.height + 12.dp.toPx()),
-                    cornerRadius = androidx.compose.ui.geometry.CornerRadius(size.height),
+                    cornerRadius = androidx.compose.ui.geometry.CornerRadius(14.dp.toPx()),
                 )
             } else Modifier)
             .clip(shape)
@@ -609,7 +610,7 @@ private fun FilterPill(label: String, cover: String?, on: Boolean, onClick: () -
         )
         Text(
             label,
-            Modifier.padding(horizontal = 15.dp),
+            Modifier.padding(horizontal = 14.dp),
             color = Color.White, fontSize = 13.sp,
             fontWeight = if (on) FontWeight.Bold else FontWeight.Medium, letterSpacing = 0.2.sp, maxLines = 1,
         )

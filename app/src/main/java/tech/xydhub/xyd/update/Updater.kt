@@ -26,6 +26,17 @@ object Updater {
 
     private fun apkFile(ctx: Context) = File(File(ctx.cacheDir, "update").apply { mkdirs() }, "xyd.apk")
 
+    /** Taille du fichier distant (en-tête Content-Length d'une requête HEAD) ; 0 si inconnue. */
+    suspend fun remoteSize(url: String): Long = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+        runCatching {
+            val c = URL(url).openConnection() as HttpURLConnection
+            try {
+                c.requestMethod = "HEAD"; c.connectTimeout = 10_000; c.readTimeout = 10_000
+                if (c.responseCode in 200..299) c.contentLengthLong.coerceAtLeast(0) else 0L
+            } finally { c.disconnect() }
+        }.getOrDefault(0L)
+    }
+
     suspend fun download(ctx: Context, url: String) {
         if (state.value is State.Downloading) return
         state.value = State.Downloading(0f)

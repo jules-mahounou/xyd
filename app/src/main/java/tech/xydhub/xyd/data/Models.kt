@@ -124,6 +124,10 @@ data class AppVersion(
     val minVersionCode: Int,
     val apkUrl: String,
     val changelog: String,
+    /** Taille de l'APK (0 = inconnue : demandée au serveur au moment d'afficher). */
+    val sizeBytes: Long = 0,
+    /** Visuel portrait d'annonce de la version, en haut du modal. */
+    val imageUrl: String? = null,
 )
 
 /** Type de requête envoyée depuis l'accueil (clé stockée en base → libellé affiché). */

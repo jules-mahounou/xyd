@@ -310,6 +310,8 @@ object Repo {
             minVersionCode = 0,
             apkUrl = o.optString("apk_url"),
             changelog = o.optString("changelog"),
+            sizeBytes = o.optLong("size_bytes", 0),
+            imageUrl = o.optString("image_url").takeIf { it.startsWith("http") },
         )
     }
 
