@@ -312,6 +312,8 @@ object Repo {
             changelog = o.optString("changelog"),
             sizeBytes = o.optLong("size_bytes", 0),
             imageUrl = o.optString("image_url").takeIf { it.startsWith("http") },
+            mediaType = o.optString("media_type", "image").ifBlank { "image" },
+            videoUrl = o.optString("video_url").takeIf { it.startsWith("http") },
         )
     }
 

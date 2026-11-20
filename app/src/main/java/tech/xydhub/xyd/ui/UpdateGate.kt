@@ -10,6 +10,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -24,6 +25,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.animation.core.animateFloat
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -72,22 +74,44 @@ fun UpdateGate() {
         // Fond : même traînée bleue animée que le modal de connexion, collée en bas.
         AuroraBand(Modifier.align(Alignment.BottomCenter), height = 150.dp)
         Column(
-            Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).navigationBarsPadding().padding(24.dp),
+            Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).navigationBarsPadding().padding(bottom = 24.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
-            // Visuel de la version (affiche portrait préparée dans l'admin), sinon le logo.
+            // Haut animé comme la connexion : carrousel diagonal du catalogue en fond,
+            // et le visuel de la version (image, GIF ou vidéo) qui flotte au centre.
             if (info.imageUrl != null) {
-                Box(
-                    Modifier.fillMaxWidth(0.62f).aspectRatio(2f / 3f).clip(RoundedCornerShape(16.dp))
-                        .border(1.dp, Color.White.copy(alpha = 0.12f), RoundedCornerShape(16.dp)),
-                ) {
-                    RemoteImage(info.imageUrl, Modifier.fillMaxSize())
-                    Box(Modifier.fillMaxSize().background(Brush.verticalGradient(0.6f to Color.Transparent, 1f to Color(0x99000000))))
+                val float = androidx.compose.animation.core.rememberInfiniteTransition(label = "float")
+                val t by float.animateFloat(
+                    0f, (2 * Math.PI).toFloat(),
+                    androidx.compose.animation.core.infiniteRepeatable(androidx.compose.animation.core.tween(5200, easing = androidx.compose.animation.core.LinearEasing)),
+                    label = "float-t",
+                )
+                Box(Modifier.fillMaxWidth().padding(top = 0.dp), contentAlignment = Alignment.Center) {
+                    CoverMarquee(height = 300.dp)
+                    Box(
+                        Modifier.fillMaxWidth(0.52f).aspectRatio(2f / 3f)
+                            .graphicsLayer {
+                                translationY = kotlin.math.sin(t) * 6.dp.toPx()
+                                rotationZ = kotlin.math.sin(t + 1f) * 1.6f
+                                shadowElevation = 24.dp.toPx()
+                                shape = RoundedCornerShape(16.dp); clip = true
+                            }
+                            .border(1.dp, Color.White.copy(alpha = 0.16f), RoundedCornerShape(16.dp)),
+                    ) {
+                        AdMedia(
+                            tech.xydhub.xyd.data.Announcement(
+                                id = "v${info.versionCode}", title = "", description = "", image = info.imageUrl,
+                                ratio = "portrait", link = null, mediaType = info.mediaType, video = info.videoUrl, showText = false,
+                            ),
+                            Modifier.fillMaxSize(),
+                        )
+                    }
                 }
             } else {
-                Logo(52.dp)
+                Logo(52.dp, Modifier.padding(top = 24.dp))
             }
             Spacer(Modifier.height(16.dp))
+            Column(Modifier.fillMaxWidth().padding(horizontal = 24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
             Text(
                 if (forced) "Mise à jour obligatoire" else "Mise à jour disponible",
                 fontSize = 22.sp, fontWeight = FontWeight.SemiBold,
@@ -157,6 +181,7 @@ fun UpdateGate() {
                 TextButton(onClick = { dismissed = info.versionCode }) { Text("Plus tard", color = Xyd.Muted) }
             }
         }
+            }
         }
     }
 }

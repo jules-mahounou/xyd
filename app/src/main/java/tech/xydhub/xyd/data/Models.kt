@@ -126,8 +126,11 @@ data class AppVersion(
     val changelog: String,
     /** Taille de l'APK (0 = inconnue : demandée au serveur au moment d'afficher). */
     val sizeBytes: Long = 0,
-    /** Visuel portrait d'annonce de la version, en haut du modal. */
+    /** Visuel portrait d'annonce de la version, en haut du modal (vignette si c'est une vidéo). */
     val imageUrl: String? = null,
+    /** "image", "gif" ou "video". */
+    val mediaType: String = "image",
+    val videoUrl: String? = null,
 )
 
 /** Type de requête envoyée depuis l'accueil (clé stockée en base → libellé affiché). */

@@ -1997,20 +1997,42 @@ function storageCard() {
 function versionsCard() {
   const card = h("div");
 
-  /** Zone d'image portrait cliquable / déposable ; `set(url)` reçoit l'URL publique. */
-  const posterBox = (url, set) => {
-    const box = h("div", { class: "imgbox poster", title: "Visuel portrait (2:3)", style: { width: "150px" } });
-    const show = (u) => { box.style.backgroundImage = u ? `url("${u}")` : ""; box.textContent = u ? "" : "Visuel\n2:3\n(clic ou glisser)"; };
-    const put = async (file) => {
-      if (!file || !/^image\//.test(file.type)) return;
-      box.textContent = "Envoi…";
-      try { const u = await uploadImage(file, "releases", "ad"); show(u); await set(u); } catch (e) { show(url); fail(e); }
+  /**
+   * Visuel portrait cliquable / déposable : image, GIF ou courte vidéo MP4 (12 Mo max).
+   * `media` = { image_url, media_type, video_url } ; `set(media)` reçoit le nouveau média.
+   */
+  const posterBox = (media, set) => {
+    const box = h("div", { class: "imgbox poster", title: "Visuel portrait (2:3) : image, GIF ou vidéo MP4", style: { width: "150px", overflow: "hidden", position: "relative" } });
+    const show = (m) => {
+      box.replaceChildren();
+      box.style.backgroundImage = m?.image_url && m.media_type !== "video" ? `url("${m.image_url}")` : "";
+      if (m?.media_type === "video" && m.video_url) {
+        const v = h("video", { src: m.video_url, poster: m.image_url || null, autoplay: true, muted: true, loop: true, playsinline: true,
+          style: { width: "100%", height: "100%", objectFit: "cover", display: "block" } });
+        v.muted = true; box.append(v);
+      } else if (!m?.image_url) box.textContent = "Visuel 2:3\nimage, GIF\nou vidéo MP4\n(clic ou glisser)";
     };
-    box.onclick = async () => put((await pickFiles("image/*"))[0]);
+    const put = async (file) => {
+      if (!file) return;
+      const isGif = file.type === "image/gif", isVideo = file.type === "video/mp4";
+      if (!isGif && !isVideo && !/^image\//.test(file.type)) return toast("Image, GIF ou vidéo MP4 uniquement", 4000, "e");
+      if ((isGif || isVideo) && file.size > AD_MAX_BYTES) return toast(`Fichier trop lourd (${fmtSize(file.size)}) : 12 Mo maximum`, 5000, "e");
+      box.replaceChildren(); box.style.backgroundImage = ""; box.textContent = "Envoi…";
+      try {
+        let m;
+        if (isVideo) {
+          const [poster, video] = await Promise.all([uploadImage(await videoThumb(file), "releases", "ad"), uploadAdFile(file, "releases", "mp4")]);
+          m = { image_url: poster, media_type: "video", video_url: video };
+        } else if (isGif) m = { image_url: await uploadAdFile(file, "releases", "gif"), media_type: "gif", video_url: null };
+        else m = { image_url: await uploadImage(file, "releases", "ad"), media_type: "image", video_url: null };
+        show(m); await set(m);
+      } catch (e) { show(media); fail(e); }
+    };
+    box.onclick = async () => put((await pickFiles("image/*,video/mp4"))[0]);
     box.ondragover = (e) => { e.preventDefault(); box.style.borderColor = "var(--grey)"; };
     box.ondragleave = () => (box.style.borderColor = "");
     box.ondrop = (e) => { e.preventDefault(); box.style.borderColor = ""; put(e.dataTransfer.files[0]); };
-    show(url);
+    show(media);
     return box;
   };
 
@@ -2031,13 +2053,13 @@ function versionsCard() {
         h("div", { class: "card" },
           h("div", { class: "ptitle" }, h("h3", {}, "Prochaine version"), h("span", { class: "pill warn" }, "pas encore publiée")),
           h("div", { class: "row", style: { alignItems: "flex-start", gap: "16px", flexWrap: "nowrap" } },
-            posterBox(nextRelease.image_url, (u) => saveNext({ image_url: u })),
+            posterBox(nextRelease, (m) => saveNext(m)),
             h("div", { style: { flex: 1 } },
               h("label", { style: { marginTop: 0 } }, "Notes de version"), notes,
-              nextRelease.image_url ? h("button", { class: "link", style: { marginTop: "6px" }, onclick: async () => { await saveNext({ image_url: null }); render(); } }, "Retirer le visuel") : "",
+              nextRelease.image_url ? h("button", { class: "link", style: { marginTop: "6px" }, onclick: async () => { await saveNext({ image_url: null, media_type: "image", video_url: null }); render(); } }, "Retirer le visuel") : "",
             )),
           h("p", { class: "muted", style: { fontSize: "12px", marginTop: "12px" } },
-            "Utilisés automatiquement à la prochaine publication (GitHub → Actions → Android → « Publier »). Les notes saisies dans GitHub, si tu en mets, remplacent celles-ci. La bêta montre déjà ce visuel dans son modal de mise à jour."),
+            "Image, GIF animé ou courte vidéo MP4 (12 Mo max, jouée en boucle sans son). Utilisés automatiquement à la prochaine publication (GitHub → Actions → Android → « Publier »). Les notes saisies dans GitHub, si tu en mets, remplacent celles-ci. La bêta montre déjà ce visuel dans son modal de mise à jour."),
         ),
         h("div", { class: "card" },
           h("div", { class: "ptitle" }, h("h3", {}, "Version en ligne")),
@@ -2058,9 +2080,9 @@ function versionsCard() {
             error ? fail(error) : (v.changelog = ch.value.trim(), toast("Notes modifiées"));
           };
           return h("div", { class: "user", style: { alignItems: "flex-start" } },
-            posterBox(v.image_url, async (u) => {
-              const { error } = await sb.from("app_versions").update({ image_url: u }).eq("version_code", v.version_code);
-              error ? fail(error) : (v.image_url = u, toast("Visuel de la version modifié"));
+            posterBox(v, async (m) => {
+              const { error } = await sb.from("app_versions").update(m).eq("version_code", v.version_code);
+              error ? fail(error) : (Object.assign(v, m), toast("Visuel de la version modifié"));
             }),
             h("div", { class: "who" },
               h("b", {}, `${v.version_name || v.version_code}`),
