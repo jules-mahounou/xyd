@@ -672,6 +672,39 @@ async function uploadImage(file, titleId, kind) {
   return sb.storage.from("posters").getPublicUrl(path).data.publicUrl;
 }
 
+// ---- nettoyage des médias (buckets Supabase « posters » et « ads »)
+const MEDIA_BUCKETS = ["posters", "ads"];
+const PUB_PREFIX = "/storage/v1/object/public/";
+/** URL publique Supabase → { bucket, path } (null si ce n'est pas un de nos fichiers). */
+function mediaPath(url) {
+  const i = (url || "").indexOf(PUB_PREFIX);
+  if (i < 0) return null;
+  const [bucket, ...rest] = url.slice(i + PUB_PREFIX.length).split("?")[0].split("/");
+  return MEDIA_BUCKETS.includes(bucket) && rest.length ? { bucket, path: decodeURIComponent(rest.join("/")) } : null;
+}
+const mediaKey = (url) => { const m = mediaPath(url); return m ? m.bucket + "/" + m.path : null; };
+/** Fichiers d'un dossier <folder>/ d'un bucket (les sous-dossiers ont id = null). */
+async function listFolder(bucket, folder) {
+  const { data, error } = await sb.storage.from(bucket).list(folder, { limit: 1000 });
+  if (error) throw error;
+  return (data || []).filter((f) => f.id).map((f) => ({ ...f, path: `${folder}/${f.name}` }));
+}
+/**
+ * Supprime tout ce qui est dans le dossier <folder>/ des buckets médias, sauf les URL de « keep ».
+ * Sert à effacer l'ancien média quand on le remplace, et tout le dossier quand on supprime le titre / l'annonce.
+ * Erreurs silencieuses : un fichier oublié se rattrape avec « Nettoyer les médias orphelins ».
+ */
+async function pruneMedia(folder, keep = []) {
+  if (!folder) return;
+  const kept = new Set(keep.map(mediaKey).filter(Boolean));
+  for (const bucket of MEDIA_BUCKETS) {
+    try {
+      const paths = (await listFolder(bucket, folder)).map((f) => f.path).filter((path) => !kept.has(bucket + "/" + path));
+      if (paths.length) await sb.storage.from(bucket).remove(paths);
+    } catch {}
+  }
+}
+
 function pickFiles(accept, multiple) {
   return new Promise((res) => {
     const i = h("input", { type: "file", accept, multiple });
@@ -833,7 +866,7 @@ function route() {
     case "requetes": return simplePage(page, requestsCard());
     case "utilisateurs": return simplePage(page, usersCard());
     case "telechargements": return simplePage(page, downloadsCard());
-    case "stockages": return simplePage(page, storageCard());
+    case "stockages": return simplePage(page, h("div", {}, storageCard(), mediaCleanCard()));
     case "categories": return simplePage(page, categoriesCard());
     default: go("#/");
   }
@@ -1210,6 +1243,8 @@ function renderEditor(t) {
         t[key] = await uploadImage(file, t.id, kind);
         box.textContent = ""; box.style.backgroundImage = `url("${t[key]}")`;
         if (!t._new) { await save({ [key]: t[key] }); toast("Image enregistrée"); }
+        // l'ancienne affiche / bannière (et les envois abandonnés) ne servent plus
+        pruneMedia(t.id, [t.poster_url, t.backdrop_url]);
       } catch (e) { box.textContent = "Erreur"; fail(e); }
     };
     box.onclick = async () => set((await pickFiles("image/*"))[0]);
@@ -1290,11 +1325,12 @@ function renderEditor(t) {
 
   const delBtn = !t._new && h("button", { class: "danger", onclick: async () => {
     const n = t.seasons.reduce((a, s) => a + s.episodes.length, 0);
-    if (!(await uiConfirm(`Supprimer « ${t.name} »${n ? ` et ses ${n} épisodes` : ""} ? Les vidéos seront effacées du stockage.`, { title: "Supprimer ce titre", ok: "Supprimer", danger: true }))) return;
+    if (!(await uiConfirm(`Supprimer « ${t.name} »${n ? ` et ses ${n} épisodes` : ""} ? Les vidéos et les images seront effacées du stockage.`, { title: "Supprimer ce titre", ok: "Supprimer", danger: true }))) return;
     const vids = [videoOf(t), ...t.seasons.flatMap((s) => s.episodes.map(videoOf))];
     const { error } = await sb.from("titles").delete().eq("id", t.id);
     if (error) return fail(error);
     storeDelete(vids);
+    pruneMedia(t.id);
     titles = titles.filter((x) => x !== t);
     toast("Supprimé");
     leaveGuard = null;
@@ -1691,6 +1727,69 @@ function downloadsCard() {
 
   render();
   return card;
+}
+
+// ---------------------------------------------------------------- médias orphelins
+/**
+ * Images / GIF / vidéos d'annonces (buckets Supabase) qui ne sont plus utilisés nulle part :
+ * ni par un titre, ni par une annonce, ni par une version publiée ou la prochaine version.
+ * Les fichiers de moins d'une heure sont ignorés (envoi en cours, fiche pas encore enregistrée).
+ */
+async function findOrphans() {
+  const [t, a, v, n] = await Promise.all([
+    sb.from("titles").select("poster_url, backdrop_url"),
+    sb.from("announcements").select("image_url, video_url"),
+    sb.from("app_versions").select("image_url, video_url"),
+    sb.from("app_settings").select("value").eq("key", "next_release").maybeSingle(),
+  ]);
+  for (const r of [t, a, v, n]) if (r.error) throw r.error;
+  const used = new Set([
+    ...t.data.flatMap((x) => [x.poster_url, x.backdrop_url]),
+    ...a.data.flatMap((x) => [x.image_url, x.video_url]),
+    ...v.data.flatMap((x) => [x.image_url, x.video_url]),
+    n.data?.value?.image_url, n.data?.value?.video_url,
+  ].map(mediaKey).filter(Boolean));
+  const limit = Date.now() - 3600e3;
+  const out = [];
+  for (const bucket of MEDIA_BUCKETS) {
+    const { data: root, error } = await sb.storage.from(bucket).list("", { limit: 1000 });
+    if (error) throw error;
+    for (const dir of (root || []).filter((x) => !x.id)) {
+      for (const f of await listFolder(bucket, dir.name)) {
+        if (used.has(bucket + "/" + f.path)) continue;
+        if (new Date(f.created_at || f.updated_at || 0).getTime() > limit) continue;
+        out.push({ bucket, path: f.path, size: f.metadata?.size || 0 });
+      }
+    }
+  }
+  return out;
+}
+
+const fmtKo = (b) => b < 1048576 ? Math.max(1, Math.round(b / 1024)) + " Ko" : (b / 1048576).toFixed(1).replace(".", ",") + " Mo";
+function mediaCleanCard() {
+  const info = h("p", { class: "muted", style: { fontSize: "13px", margin: "6px 0 12px" } },
+    "Les médias sont effacés automatiquement quand tu supprimes ou remplaces un titre, une image ou une annonce. Ce bouton rattrape les fichiers restés avant ce nettoyage ou après un envoi abandonné.");
+  const btn = h("button", { class: "ghost", onclick: async () => {
+    btn.disabled = true; btn.textContent = "Analyse…";
+    try {
+      const list = await findOrphans();
+      if (!list.length) { toast("Aucun média orphelin"); return; }
+      const size = list.reduce((s, x) => s + x.size, 0);
+      if (!(await uiConfirm(`${list.length} fichier${list.length > 1 ? "s" : ""} inutilisé${list.length > 1 ? "s" : ""} (${fmtKo(size)}) : images, GIF ou vidéos qui ne sont plus liés à aucun titre, annonce ou version. Les supprimer ?`,
+        { title: "Médias orphelins", ok: "Supprimer", danger: true }))) return;
+      for (const bucket of MEDIA_BUCKETS) {
+        const paths = list.filter((x) => x.bucket === bucket).map((x) => x.path);
+        for (let i = 0; i < paths.length; i += 100) {
+          const { error } = await sb.storage.from(bucket).remove(paths.slice(i, i + 100));
+          if (error) throw error;
+        }
+      }
+      toast(`${list.length} fichier${list.length > 1 ? "s" : ""} supprimé${list.length > 1 ? "s" : ""} · ${fmtKo(size)} libérés`);
+    } catch (e) { fail(e); }
+    finally { btn.disabled = false; btn.textContent = "Nettoyer les médias orphelins"; }
+  } }, "Nettoyer les médias orphelins");
+  return h("div", { class: "card", style: { marginTop: "16px" } },
+    h("div", { class: "ptitle" }, h("h3", {}, "Images et médias d'annonces")), info, btn);
 }
 
 // ---------------------------------------------------------------- stockages (pool)
@@ -2276,15 +2375,18 @@ function adsCard() {
       if (res.error) return (err.textContent = res.error.message);
       const i = ads.findIndex((x) => x.id === a.id);
       i >= 0 ? (ads[i] = res.data) : ads.unshift(res.data);
+      // média remplacé : l'ancien fichier (et ceux envoyés puis abandonnés) est effacé
+      pruneMedia(a.id, [res.data.image_url, res.data.video_url]);
       editing = { ...res.data };
       toast(a._new ? "Annonce créée — place-la dans une section" : "Annonce enregistrée");
       renderNav(); render();
     } }, icon("save"), a._new ? "Créer l'annonce" : "Enregistrer");
 
     const del = !a._new && h("button", { class: "danger", onclick: async () => {
-      if (!(await uiConfirm(`Supprimer l'annonce « ${a.title || "sans titre"} » ? Elle disparaît de toutes les sections.`, { ok: "Supprimer", danger: true }))) return;
+      if (!(await uiConfirm(`Supprimer l'annonce « ${a.title || "sans titre"} » ? Elle disparaît de toutes les sections et son média est effacé du stockage.`, { ok: "Supprimer", danger: true }))) return;
       const { error } = await sb.from("announcements").delete().eq("id", a.id);
       if (error) return fail(error);
+      pruneMedia(a.id);
       ads = ads.filter((x) => x.id !== a.id);
       for (const c of categories) c.items = c.items.filter((k) => k !== "a:" + a.id);
       editing = null; toast("Annonce supprimée"); renderNav(); render();
