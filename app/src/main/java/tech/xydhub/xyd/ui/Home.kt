@@ -38,6 +38,7 @@ import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.Badge
 import androidx.compose.material3.BadgedBox
@@ -87,6 +88,7 @@ import tech.xydhub.xyd.download.Downloads
 private const val SHEET_DOWNLOADS = "#downloads"
 private const val SHEET_SETTINGS = "#settings"
 private const val SHEET_REQUEST = "#request"
+private const val SHEET_SEARCH = "#search"
 
 /** Filtres en haut de l'accueil : "all", "serie", "film" ou "cat:<id>". */
 private const val F_ALL = "all"
@@ -171,6 +173,9 @@ fun HomeScreen(onPlay: (String) -> Unit) {
         ) {
             Logo(30.dp)
             Spacer(Modifier.weight(1f))
+            IconButton(onClick = { sheet = SHEET_SEARCH }) {
+                Icon(Icons.Filled.Search, "Rechercher", tint = Color.White)
+            }
             IconButton(onClick = { sheet = SHEET_REQUEST }) {
                 Icon(Icons.Filled.Edit, "Soumettre une requête", tint = Color.White)
             }
@@ -358,6 +363,7 @@ fun HomeScreen(onPlay: (String) -> Unit) {
         SHEET_DOWNLOADS -> DownloadsSheet(onPlay = { sheet = null; onPlay(it) }, onDismiss = { sheet = null })
         SHEET_SETTINGS -> SettingsSheet(onDismiss = { sheet = null })
         SHEET_REQUEST -> RequestSheet(onDismiss = { sheet = null })
+        SHEET_SEARCH -> SearchSheet(catalog, onOpen = { sheet = it.id }, onDismiss = { sheet = null })
         else -> catalog.firstOrNull { it.id == s }?.let { t ->
             TitleSheet(t, onPlay = { sheet = null; onPlay(it) }, download = download, onDismiss = { sheet = null })
         } ?: run { sheet = null }
