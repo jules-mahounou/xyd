@@ -17,7 +17,11 @@ on:
         type: boolean
         default: true
       changelog:
-        description: "Notes de version affichées dans l'app"
+        description: "Notes de version affichées dans l'app (vide = celles préparées dans l'admin)"
+        type: string
+        default: ""
+      version_name:
+        description: "Nom de version (ex : 2.1.73) ; vide = 0.1.<numéro du build>"
         type: string
         default: ""
 
@@ -59,7 +63,9 @@ jobs:
         id: v
         run: |
           CODE=$((100 + ${{ github.run_number }}))
-          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then NAME="${GITHUB_REF#refs/tags/v}"; else NAME="0.1.${{ github.run_number }}"; fi
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then NAME="${GITHUB_REF#refs/tags/v}"
+          elif [ -n "${{ inputs.version_name }}" ]; then NAME="${{ inputs.version_name }}"
+          else NAME="0.1.${{ github.run_number }}"; fi
           echo "XYD_VERSION_CODE=$CODE" >> "$GITHUB_ENV"
           echo "XYD_VERSION_NAME=$NAME" >> "$GITHUB_ENV"
           echo "code=$CODE" >> "$GITHUB_OUTPUT"
