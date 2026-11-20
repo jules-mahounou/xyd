@@ -783,7 +783,6 @@ function statsOf(t) {
   const issues = [];
   if (!t.poster_url) issues.push("affiche");
   if (!(t.synopsis || "").trim()) issues.push("résumé");
-  if (t.featured && !t.backdrop_url) issues.push("image 16:9");
   if (t.kind === "film" && !t.video_key) issues.push("vidéo");
   if (t.kind === "serie" && !eps.length) issues.push("épisodes");
   return { eps: eps.length, seasons: t.seasons.length, size, dur, issues, noSyn: eps.filter((e) => !(e.synopsis || "").trim()).length };
@@ -1234,7 +1233,7 @@ function renderEditor(t) {
 
   const imgBox = (kind) => {
     const key = kind === "poster" ? "poster_url" : "backdrop_url";
-    const box = h("div", { class: "imgbox " + kind, title: "Changer l'image" }, t[key] ? "" : (kind === "poster" ? "Affiche\n2:3" : "Image 16:9\n(bannière)"));
+    const box = h("div", { class: "imgbox " + kind, title: "Changer l'image" }, t[key] ? "" : (kind === "poster" ? "Affiche\n2:3" : "Image 16:9\n(facultative : sinon\nl'affiche, recadrée au centre)"));
     if (t[key]) box.style.backgroundImage = `url("${t[key]}")`;
     const set = async (file) => {
       if (!file || !/^image\//.test(file.type)) return;
