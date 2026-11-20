@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Icône de « xyd β » : fond ambre pour ne pas la confondre avec la vraie appli. -->
+    <color name="launcher_bg">#FF6B4A00</color>
+</resources>

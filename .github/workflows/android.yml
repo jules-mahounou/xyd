@@ -91,8 +91,12 @@ jobs:
           if [ "$PUBLISH" = "true" ]; then echo "::error::Publication bloquée : l'app utiliserait des tables absentes."; exit 1; fi
           echo "::warning::Build non publié : base en retard sur le code."
 
-      - name: Build APK release
-        run: ./gradlew :app:assembleRelease --stacktrace
+      - name: Build APK release (+ bêta hors publication)
+        run: |
+          # L'APK bêta (« xyd β ») est construit à chaque build non publié : il s'installe
+          # à côté de la vraie appli et n'est jamais envoyé aux utilisateurs.
+          if [ "$PUBLISH" = "true" ]; then ./gradlew :app:assembleRelease --stacktrace
+          else ./gradlew :app:assembleRelease :app:assembleBeta --stacktrace; fi
 
       - name: Taille de l'APK
         run: |
@@ -115,6 +119,27 @@ jobs:
         with:
           name: xyd-${{ steps.v.outputs.name }}
           path: xyd.apk
+          retention-days: 30
+
+      - name: APK bêta
+        id: beta
+        if: env.PUBLISH != 'true'
+        run: |
+          APK=$(ls app/build/outputs/apk/beta/*.apk 2>/dev/null | head -1)
+          [ -n "$APK" ] || { echo "::warning::APK bêta introuvable"; exit 0; }
+          cp "$APK" xyd-beta.apk
+          echo "ok=true" >> "$GITHUB_OUTPUT"
+          {
+            echo ""
+            echo "### 🧪 Appli de test « xyd β »"
+            echo "Télécharge l'artefact **xyd-beta-${{ steps.v.outputs.name }}** ci-dessous, dézippe et installe \`xyd-beta.apk\` : elle s'installe à côté de la vraie appli, avec le même compte et les mêmes vidéos."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - uses: actions/upload-artifact@v4
+        if: steps.beta.outputs.ok == 'true'
+        with:
+          name: xyd-beta-${{ steps.v.outputs.name }}
+          path: xyd-beta.apk
           retention-days: 30
 
       # ------------------------------------------------------------ Publication

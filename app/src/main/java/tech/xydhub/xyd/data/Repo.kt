@@ -296,7 +296,7 @@ object Repo {
     // ---------- Mises à jour ----------
 
     suspend fun checkUpdate() {
-        if (!Supabase.configured) return
+        if (!Supabase.configured || BuildConfig.BETA) return // l'appli de test ne propose jamais de mise à jour
         val v = runCatching { Supabase.latestVersion() }.getOrNull() ?: return
         update.value = if (v.versionCode > BuildConfig.VERSION_CODE && v.apkUrl.isNotBlank()) v else null
     }

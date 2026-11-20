@@ -2,4 +2,6 @@
 <resources>
     <color name="xyd_black">#FF000000</color>
     <color name="xyd_grey">#FFC6C6C6</color>
+    <!-- Fond de l'icône : noir ; remplacé dans src/beta pour reconnaître l'appli de test. -->
+    <color name="launcher_bg">#FF000000</color>
 </resources>

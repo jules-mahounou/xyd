@@ -27,6 +27,10 @@ android {
         versionCode = cfg("XYD_VERSION_CODE", "xyd.versionCode", "1").toInt()
         versionName = cfg("XYD_VERSION_NAME", "xyd.versionName", "0.1.0")
 
+        // Nom affiché et drapeau « bêta » : redéfinis par le type de build beta.
+        resValue("string", "app_name", "xyd")
+        buildConfigField("boolean", "BETA", "false")
+
         buildConfigField("String", "SUPABASE_URL", "\"${cfg("SUPABASE_URL", "supabase.url").trimEnd('/')}\"")
         buildConfigField("String", "SUPABASE_KEY", "\"${cfg("SUPABASE_ANON_KEY", "supabase.anonKey")}\"")
         // Mail externe (test) : jamais en dur dans le code, injecté au build.
@@ -64,6 +68,16 @@ android {
         }
         debug {
             applicationIdSuffix = ".debug"
+        }
+        // Appli de test « xyd β » : s'installe à côté de la vraie (autre identifiant),
+        // même base Supabase, jamais publiée, pas de mise à jour forcée.
+        create("beta") {
+            initWith(getByName("release"))
+            applicationIdSuffix = ".beta"
+            versionNameSuffix = "-beta"
+            resValue("string", "app_name", "xyd β")
+            buildConfigField("boolean", "BETA", "true")
+            matchingFallbacks += listOf("release")
         }
     }
 
