@@ -108,6 +108,18 @@
   .err { color:var(--danger); margin-top:10px; min-height:20px; font-size:13px; }
   [hidden] { display:none !important; }
 
+  /* ---------- skeletons (chargement) */
+  .sk { display:inline-block; vertical-align:middle; border-radius:6px; background:linear-gradient(90deg,#141414 25%,#212121 40%,#141414 60%); background-size:300% 100%; animation:sk 1.3s ease-in-out infinite; }
+  .sk.blk { display:block; }
+  @keyframes sk { from { background-position:100% 0; } to { background-position:0 0; } }
+  @media (prefers-reduced-motion:reduce) { .sk { animation:none; } }
+  nav a .cnt.sk { width:22px; height:16px; padding:0; }
+  .tile .poster.sk { border:0; display:block; }
+  .sk-row { display:flex; align-items:center; gap:12px; padding:12px 0; border-top:1px solid var(--line); }
+  .sk-row:first-child { border-top:0; }
+  .sk-row .b { flex:1; display:flex; flex-direction:column; gap:7px; }
+  .ld button:not(.keep), .ld select, .ld input { pointer-events:none; opacity:.55; }
+
   /* ---------- cartes */
   .card { background:var(--card); border:1px solid var(--line); border-radius:var(--r); padding:18px; margin-top:16px; }
   .card:first-child { margin-top:0; }
@@ -640,47 +652,46 @@ function pickFiles(accept, multiple) {
 
 // ---------------------------------------------------------------- données
 async function load() {
-  const { data, error } = await sb.from("titles")
-    .select("*, seasons(*, episodes(*))")
-    .order("sort").order("created_at", { ascending: false });
-  if (error) throw error;
-  for (const t of data) {
+  // Toutes les requêtes partent en même temps (au lieu de l'une après l'autre).
+  const today = new Date().toISOString().slice(0, 10); // jour UTC, comme les plafonds Backblaze
+  const [tq, st0, ud, lim, ds, us, rq, ss, cats] = await Promise.all([
+    sb.from("titles").select("*, seasons(*, episodes(*))").order("sort").order("created_at", { ascending: false }),
+    sb.from("storage_backends").select(STORE_COLS).order("priority").order("created_at"),
+    sb.from("storage_usage_daily").select("*").eq("day", today),
+    sb.rpc("download_limits"),
+    sb.rpc("admin_download_stats", { p_days: 7 }),
+    sb.from("profiles").select("*").order("created_at", { ascending: false }),
+    sb.from("user_requests").select("*").order("created_at", { ascending: false }).limit(300),
+    sb.from("app_settings").select("value").eq("key", "signup").maybeSingle(),
+    sb.from("categories").select("id, name, sort, ranked, title_categories(title_id, position)").order("sort").order("created_at"),
+  ]);
+
+  if (tq.error) throw tq.error;
+  for (const t of tq.data) {
     t.seasons.sort((a, b) => a.number - b.number);
     for (const s of t.seasons) s.episodes.sort((a, b) => a.number - b.number);
   }
-  titles = data;
+  titles = tq.data;
 
-  let st = await sb.from("storage_backends")
-    .select(STORE_COLS)
-    .order("priority").order("created_at");
+  let st = st0;
   // Migration « download_limits » pas encore appliquée : colonnes de base seulement.
   if (st.error) st = await sb.from("storage_backends").select(STORE_COLS.split(", billable")[0]).order("priority").order("created_at");
   storagesAvailable = !st.error;
   storages = st.data || [];
 
-  const today = new Date().toISOString().slice(0, 10); // jour UTC, comme les plafonds Backblaze
-  const ud = await sb.from("storage_usage_daily").select("*").eq("day", today);
   limitsAvailable = !ud.error;
   usageToday = ud.data || [];
   if (limitsAvailable) {
-    const lim = await sb.rpc("download_limits");
     limits = lim.data || {};
-    const ds = await sb.rpc("admin_download_stats", { p_days: 7 });
     dlStats = ds.data || [];
   }
 
-  const us = await sb.from("profiles").select("*").order("created_at", { ascending: false });
   usersAvailable = !us.error;
   users = us.data || [];
-  const rq = await sb.from("user_requests").select("*").order("created_at", { ascending: false }).limit(300);
   requestsAvailable = !rq.error;
   requests = rq.data || [];
-  const ss = await sb.from("app_settings").select("value").eq("key", "signup").maybeSingle();
   signupSettings = ss.data?.value || { notify: true, recipient: null, fields: ["name", "email", "created_at"] };
 
-  const cats = await sb.from("categories")
-    .select("id, name, sort, ranked, title_categories(title_id, position)")
-    .order("sort").order("created_at");
   catsAvailable = !cats.error;
   categories = (cats.data || []).map((c) => ({
     id: c.id, name: c.name, sort: c.sort, ranked: c.ranked,
@@ -737,7 +748,8 @@ function renderNav() {
   const page = cur === "titre" || cur === "nouveau" ? "catalogue" : cur;
   $("nav").replaceChildren(...PAGES.filter((p) => !p.show || p.show()).map((p) => {
     if (p.sec) return h("div", { class: "navsec" }, p.sec);
-    const c = navCount(p.id);
+    const c = loading ? (["catalogue", "requetes", "utilisateurs", "stockages"].includes(p.id) ? "sk" : null) : navCount(p.id);
+    if (c === "sk") return h("a", { href: "#/" + p.id, class: page === p.id ? "on" : "" }, icon(p.ic), p.label, h("span", { class: "cnt sk" }));
     return h("a", { href: "#/" + p.id, class: page === p.id ? "on" : "" }, icon(p.ic), p.label, c ? h("span", { class: "cnt " + c[1] }, c[0]) : "");
   }));
 }
@@ -761,6 +773,7 @@ function route() {
   const [page, arg] = location.hash.replace(/^#\/?/, "").split("/");
   renderNav();
   window.scrollTo(0, 0);
+  if (loading) return renderSkeleton(page || "", arg);
   switch (page || "") {
     case "": return renderOverview();
     case "catalogue": return renderCatalog();
@@ -769,17 +782,88 @@ function route() {
       return t ? renderEditor(t) : go("#/catalogue");
     }
     case "nouveau": return renderEditor(newTitle(arg === "film" ? "film" : "serie"));
-    case "requetes": return simplePage("Requêtes", "Demandes de séries et films, avis et problèmes envoyés depuis l'app.", requestsCard());
-    case "utilisateurs": return simplePage("Utilisateurs", "Comptes, statuts et mail d'inscription.", usersCard());
-    case "telechargements": return simplePage("Téléchargements", "Limitation multicouche et consommation par personne.", downloadsCard());
-    case "stockages": return simplePage("Stockages", "Pool de stockages vidéo, remplissage par priorité.", storageCard());
-    case "categories": return simplePage("Catégories", "Rangées affichées sur l'accueil de l'app, dans l'ordre.", categoriesCard());
+    case "requetes": return simplePage(page, requestsCard());
+    case "utilisateurs": return simplePage(page, usersCard());
+    case "telechargements": return simplePage(page, downloadsCard());
+    case "stockages": return simplePage(page, storageCard());
+    case "categories": return simplePage(page, categoriesCard());
     default: go("#/");
   }
 }
-function simplePage(title, sub, card) {
+const PAGE_INFO = {
+  requetes: ["Requêtes", "Demandes de séries et films, avis et problèmes envoyés depuis l'app."],
+  utilisateurs: ["Utilisateurs", "Comptes, statuts et mail d'inscription."],
+  telechargements: ["Téléchargements", "Limitation multicouche et consommation par personne."],
+  stockages: ["Stockages", "Pool de stockages vidéo, remplissage par priorité."],
+  categories: ["Catégories", "Rangées affichées sur l'accueil de l'app, dans l'ordre."],
+};
+const phead = (title, sub) => h("div", { class: "phead" }, h("div", { class: "t" }, h("h2", {}, title), h("p", {}, sub)));
+function simplePage(page, card) {
+  const [title, sub] = PAGE_INFO[page];
   setTop([{ label: title }], newBtns());
-  $("main").replaceChildren(h("div", { class: "phead" }, h("div", { class: "t" }, h("h2", {}, title), h("p", {}, sub))), card);
+  $("main").replaceChildren(phead(title, sub), card);
+}
+
+// ---------------------------------------------------------------- chargement (skeletons)
+let loading = true;
+const sk = (w, hgt = 12, style = {}) => h("span", { class: "sk", style: { width: typeof w === "number" ? w + "px" : w, height: hgt + "px", ...style } });
+const skRows = (n, thumb) => h("div", {}, ...Array.from({ length: n }, (_, i) => h("div", { class: "sk-row" },
+  thumb === "avatar" ? sk(30, 30, { borderRadius: "50%" }) : thumb ? sk(34, 51, { borderRadius: "5px" }) : "",
+  h("div", { class: "b" }, sk(`${55 - (i * 13) % 30}%`, 13), sk(`${35 - (i * 7) % 15}%`, 10)),
+  sk(64, 20, { borderRadius: "20px" }))));
+const skCard = (title, body) => h("div", { class: "card" }, h("div", { class: "ptitle" }, h("h3", {}, title)), body);
+const skTiles = (n, min = 150) => h("div", { class: "titles", style: { gridTemplateColumns: `repeat(auto-fill,minmax(${min}px,1fr))` } },
+  ...Array.from({ length: n }, () => h("div", { class: "tile" }, h("div", { class: "poster sk" }), sk("75%", 13, { marginTop: "10px", display: "block" }), sk("50%", 10, { marginTop: "6px", display: "block" }))));
+const skKpi = (ic, label) => h("div", { class: "kpi" }, h("span", { class: "l" }, icon(ic), label), sk(56, 26, { margin: "3px 0" }), sk("70%", 10));
+
+/** Structure de la page tout de suite (titres, libellés, boutons) ; seules les données sont en skeleton. */
+function renderSkeleton(page, arg) {
+  const main = $("main");
+  main.classList.add("ld");
+  if (page === "") {
+    setTop([{ label: "Vue d'ensemble" }], newBtns());
+    return main.replaceChildren(
+      phead("Vue d'ensemble", new Date().toLocaleDateString("fr-FR", { weekday: "long", day: "numeric", month: "long" })),
+      h("div", { class: "kpis" }, skKpi("film", "Catalogue"), skKpi("tv", "Vidéos"), skKpi("db", "Stockage"), skKpi("inbox", "Requêtes"), skKpi("users", "Utilisateurs")),
+      h("div", { class: "cols" },
+        h("div", { class: "stack" }, skCard("À compléter", skRows(3, true)), skCard("Ajoutés récemment", skTiles(6, 110))),
+        h("div", { class: "stack" }, skCard("Dernières requêtes", skRows(3)), skCard("Plus gros consommateurs · 7 j", skRows(2, "avatar")),
+          skCard("Stockages", h("div", {}, ...[0, 1].map(() => h("div", { style: { marginTop: "12px" } }, h("div", { class: "row" }, sk(110, 12), h("span", { class: "sp", style: { flex: 1 } }), sk(90, 12)), sk("100%", 6, { display: "block", marginTop: "8px" }))))))),
+    );
+  }
+  if (page === "catalogue") {
+    setTop([{ label: "Catalogue" }], newBtns());
+    return main.replaceChildren(
+      phead("Catalogue", "Clique sur un titre pour le modifier. Raccourci : / pour rechercher."),
+      h("div", { class: "toolbar" },
+        h("div", { class: "seg" }, ...["Tout", "Séries", "Films"].map((l, i) => h("button", { class: i ? "" : "on" }, l))),
+        ...["Tous", "Visibles", "Masqués", "À la une", "À compléter"].map((l, i) => h("button", { class: "chip" + (i ? "" : " on") }, l)),
+        h("span", { class: "sp" }), sk(60, 12)),
+      skTiles(12),
+    );
+  }
+  if (page === "titre" || page === "nouveau") {
+    const isNew = page === "nouveau";
+    const label = isNew ? (arg === "film" ? "Nouveau film" : "Nouvelle série") : null;
+    setTop([{ label: "Catalogue", href: "#/catalogue" }, { label: label || "…" }]);
+    const field = (l, tall) => h("div", {}, h("label", {}, l), sk("100%", tall ? 110 : 38, { display: "block", borderRadius: "9px" }));
+    return main.replaceChildren(
+      h("div", { class: "phead" }, h("div", { class: "t" }, h("div", { class: "row", style: { gap: "8px", marginBottom: "6px" } }, sk(46, 20, { borderRadius: "20px" }), sk(56, 20, { borderRadius: "20px" })),
+        label ? h("h2", {}, label) : sk(220, 24))),
+      h("div", { class: "ed" },
+        h("div", {},
+          h("div", { class: "card" }, h("div", { class: "ptitle" }, h("h3", {}, "Informations")), field("Nom"),
+            h("div", { class: "grid2" }, field("Année"), field("Ordre d'affichage (petit = en premier)")), field("Résumé", true)),
+          isNew ? "" : h("div", { class: "card" }, sk(170, 15, { display: "block", marginBottom: "6px" }), skRows(4))),
+        h("div", {},
+          skCard("Visuels", h("div", { class: "imgs" }, sk(110, 165, { borderRadius: "10px", flex: "none" }), sk("100%", 120, { borderRadius: "10px" }))),
+          skCard("Publication", h("div", {}, ...["Visible dans l'app", "À la une"].map((l) => h("div", { class: "toggle-row" }, h("div", {}, h("b", {}, l)), sk(34, 20, { borderRadius: "20px" }))))))),
+    );
+  }
+  const [title, sub] = PAGE_INFO[page] || ["", ""];
+  setTop([{ label: title }], newBtns());
+  main.replaceChildren(phead(title, sub),
+    h("div", { class: "card" }, h("div", { class: "toolbar" }, ...[70, 64, 60].map((w) => sk(w, 28, { borderRadius: "20px" }))), skRows(5, page === "utilisateurs" || page === "telechargements" ? "avatar" : false)));
 }
 window.addEventListener("hashchange", () => {
   if (leaveGuard && !leaveGuard()) return;
@@ -790,17 +874,21 @@ window.addEventListener("hashchange", () => {
 async function boot() {
   const { data: { session } } = await sb.auth.getSession();
   if (!session) return showLogin();
-  const { data: isAdmin, error } = await sb.rpc("is_admin");
-  if (error || isAdmin !== true) {
-    await sb.auth.signOut();
-    return showLogin("Ce compte n'est pas administrateur.");
-  }
+  // L'interface s'affiche tout de suite (skeletons) pendant la vérification admin et le chargement.
   $("who").textContent = session.user.email;
   $("avatar").textContent = (session.user.email || "?")[0].toUpperCase();
   $("v-login").hidden = true;
   $("v-app").hidden = false;
-  $("main").replaceChildren(h("div", { class: "empty" }, "Chargement…"));
-  try { await load(); } catch (e) { fail(e); }
+  loading = true;
+  route();
+  const [adm, res] = await Promise.all([sb.rpc("is_admin"), load().then(() => null, (e) => e)]);
+  if (adm.error || adm.data !== true) {
+    await sb.auth.signOut();
+    return showLogin("Ce compte n'est pas administrateur.");
+  }
+  if (res) fail(res);
+  loading = false;
+  $("main").classList.remove("ld");
   route();
 }
 
