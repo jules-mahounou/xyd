@@ -187,7 +187,10 @@ fun HomeScreen(onPlay: (String) -> Unit) {
     }
 
     PullToRefreshBox(isRefreshing = loading, onRefresh = { Repo.refresh() }, modifier = Modifier.fillMaxSize()) {
-        LazyColumn(Modifier.fillMaxSize()) {
+        // Arrière-plan : traînée bleue animée collée en bas de l'écran (bottom 0), derrière le contenu.
+        // Elle ne prend aucune place : la liste défile par-dessus.
+        AuroraBand(Modifier.align(Alignment.BottomCenter), height = 190.dp)
+        LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 32.dp)) {
             when {
                 catalog.isEmpty() && session != null && (loading || error == null) -> {
                     item { header() }
@@ -287,9 +290,6 @@ fun HomeScreen(onPlay: (String) -> Unit) {
                     )
                 }
             }
-
-            // Tout en bas : traînée de lumière bleue animée, jusque sous la barre de navigation.
-            item(key = "aurora") { AuroraBand(Modifier.padding(top = 28.dp)) }
         }
     }
 

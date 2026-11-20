@@ -168,9 +168,13 @@ fun AuthSheet() {
     }
 
     XSheet(onDismiss = {}, locked = true) {
-        Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).imePadding()) {
+        Box(Modifier.fillMaxWidth()) {
+        // Arrière-plan du modal : traînée bleue animée collée en bas, derrière le formulaire.
+        AuroraBand(Modifier.align(Alignment.BottomCenter), height = 150.dp)
         Column(
-            Modifier.fillMaxWidth().padding(horizontal = 24.dp).padding(top = 28.dp),
+            Modifier.fillMaxWidth().verticalScroll(rememberScrollState())
+                .padding(horizontal = 24.dp).padding(top = 28.dp, bottom = 24.dp)
+                .navigationBarsPadding().imePadding(),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
             Logo(56.dp)
@@ -202,8 +206,6 @@ fun AuthSheet() {
                 Text(if (signup) "J'ai déjà un compte" else "Pas de compte ? S'inscrire", color = Xyd.Muted)
             }
         }
-        // Bas du modal : même traînée bleue que l'accueil (inclut la barre de navigation).
-        AuroraBand(height = 110.dp)
         }
     }
 }
