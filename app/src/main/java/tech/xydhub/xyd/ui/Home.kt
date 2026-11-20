@@ -187,10 +187,7 @@ fun HomeScreen(onPlay: (String) -> Unit) {
     }
 
     PullToRefreshBox(isRefreshing = loading, onRefresh = { Repo.refresh() }, modifier = Modifier.fillMaxSize()) {
-        // Arrière-plan : traînée bleue animée collée en bas de l'écran (bottom 0), derrière le contenu.
-        // Elle ne prend aucune place : la liste défile par-dessus.
-        AuroraBand(Modifier.align(Alignment.BottomCenter), height = 190.dp)
-        LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 32.dp)) {
+        LazyColumn(Modifier.fillMaxSize()) {
             when {
                 catalog.isEmpty() && session != null && (loading || error == null) -> {
                     item { header() }
@@ -265,10 +262,6 @@ fun HomeScreen(onPlay: (String) -> Unit) {
                 }
             }
 
-            if (session != null && catalog.isNotEmpty()) {
-                item(key = "request-cta") { RequestCta { sheet = SHEET_REQUEST } }
-            }
-
             if (catalog.isEmpty() && session != null && !loading && error != null) {
                 item {
                     Column(
@@ -288,6 +281,19 @@ fun HomeScreen(onPlay: (String) -> Unit) {
                         "Aucun contenu pour le moment", color = Xyd.Muted, textAlign = TextAlign.Center,
                         modifier = Modifier.fillMaxWidth().padding(top = 80.dp),
                     )
+                }
+            }
+
+            // Fin de page : la traînée bleue est l'arrière-plan du bas du contenu (bottom 0).
+            // Elle défile avec la page : invisible en haut, visible en arrivant tout en bas,
+            // derrière le bloc « Il te manque une série ? ».
+            item(key = "page-bottom") {
+                Box(Modifier.fillMaxWidth()) {
+                    AuroraBand(Modifier.align(Alignment.BottomCenter), height = 210.dp)
+                    Column(Modifier.fillMaxWidth()) {
+                        if (session != null && catalog.isNotEmpty()) RequestCta { sheet = SHEET_REQUEST }
+                        Spacer(Modifier.fillMaxWidth().navigationBarsPadding().height(110.dp))
+                    }
                 }
             }
         }
