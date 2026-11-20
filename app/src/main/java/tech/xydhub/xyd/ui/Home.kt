@@ -59,6 +59,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.composed
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -557,7 +558,7 @@ private fun rememberFlipState(): androidx.compose.runtime.MutableState<String?> 
 /** Appui long : retourne la série (avec vibration). Toucher : ouvre la fiche, ou remet la carte si elle est retournée. */
 @OptIn(ExperimentalFoundationApi::class)
 private fun Modifier.flipGestures(t: Title, flip: androidx.compose.runtime.MutableState<String?>, onClick: (Title) -> Unit): Modifier =
-    androidx.compose.ui.composed {
+    composed {
         val haptic = androidx.compose.ui.platform.LocalHapticFeedback.current
         combinedClickable(
             onClick = { if (flip.value == t.id) flip.value = null else onClick(t) },
