@@ -118,7 +118,12 @@ fun HomeScreen(onPlay: (String) -> Unit) {
     val allRows = remember(catalog, categories, ads) {
         val byId = catalog.associateBy { it.id }
         categories.map { c ->
-            c to c.items.mapNotNull { k -> if (k.startsWith("a:")) ads[k.removePrefix("a:")]?.asTitle() else byId[k] }
+            c to when (c.auto) {
+                // Sections automatiques (créées par l'admin à la place des rangées fixes « Séries » / « Films »).
+                "series" -> catalog.filter { !it.isFilm }
+                "films" -> catalog.filter { it.isFilm }
+                else -> c.items.mapNotNull { k -> if (k.startsWith("a:")) ads[k.removePrefix("a:")]?.asTitle() else byId[k] }
+            }
         }.filter { it.second.isNotEmpty() }
     }
     val ctx = LocalContext.current
@@ -183,7 +188,7 @@ fun HomeScreen(onPlay: (String) -> Unit) {
             if (catalog.any { !it.isFilm }) add(F_SERIES to "Séries")
             if (catalog.any { it.isFilm }) add(F_FILMS to "Films")
             // Pastille de filtre seulement pour les sections titrées qui ont des séries / films.
-            allRows.filter { (c, l) -> c.showTitle && l.any { it.ad == null } }.forEach { (c, _) -> add("cat:${c.id}" to c.name) }
+            allRows.filter { (c, l) -> c.auto == null && c.showTitle && l.any { it.ad == null } }.forEach { (c, _) -> add("cat:${c.id}" to c.name) }
         }
         if (options.size > 2) {
             LazyRow(
@@ -276,6 +281,8 @@ fun HomeScreen(onPlay: (String) -> Unit) {
                         posterGrid(visible, open)
                     }
                 }
+                // Les rangées « Séries » / « Films » sont gérées comme sections dans l'admin : rien à ajouter ici.
+                categories.any { it.auto != null } -> {}
                 else -> {
                     val series = visible.filter { !it.isFilm }
                     val films = visible.filter { it.isFilm }
@@ -567,7 +574,7 @@ private fun AdPoster(t: Title, onClick: (Title) -> Unit) {
     // Hauteur des affiches ; un format très large (bandeau) est plafonné en largeur et devient plus bas.
     val w = minOf(118.dp * 1.5f * ad.aspect, 300.dp)
     Box(
-        Modifier.width(w).aspectRatio(ad.aspect).clip(RoundedCornerShape(10.dp))
+        Modifier.width(w).aspectRatio(ad.aspect).then(if (ad.free) Modifier else Modifier.clip(RoundedCornerShape(10.dp)))
             .clickable(enabled = ad.link != null) { onClick(t) },
     ) {
         // Titre / description / bouton éventuels sont écrits sur le média (AdMedia).
@@ -588,7 +595,7 @@ private fun BannerRow(titles: List<Title>, onClick: (Title) -> Unit) {
                 val aspect = t.ad?.aspect ?: (16f / 9f)
                 val clickable = t.ad == null || t.ad.link != null
                 Box(
-                    Modifier.width(w).aspectRatio(aspect).clip(RoundedCornerShape(14.dp))
+                    Modifier.width(w).aspectRatio(aspect).then(if (t.ad?.free == true) Modifier else Modifier.clip(RoundedCornerShape(14.dp)))
                         .then(if (clickable) Modifier.clickable { onClick(t) } else Modifier),
                 ) {
                     if (t.ad != null) AdMedia(t.ad, Modifier.fillMaxSize())

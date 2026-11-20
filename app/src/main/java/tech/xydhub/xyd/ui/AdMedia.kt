@@ -62,7 +62,11 @@ import tech.xydhub.xyd.data.Announcement
 fun AdMedia(ad: Announcement, modifier: Modifier = Modifier) {
     Box(modifier) {
         // Image, ou vignette / première image en attendant l'animation.
-        RemoteImage(ad.image, Modifier.fillMaxSize(), background = Color.Transparent)
+        RemoteImage(
+            ad.image, Modifier.fillMaxSize(), background = Color.Transparent,
+            // Libre : le visuel entier (déjà aux bonnes proportions), jamais rogné.
+            contentScale = if (ad.free) androidx.compose.ui.layout.ContentScale.Fit else androidx.compose.ui.layout.ContentScale.Crop,
+        )
         when {
             ad.mediaType == "video" && ad.video != null -> AdVideo(ad.video, Modifier.fillMaxSize())
             ad.mediaType == "gif" && ad.image != null && Build.VERSION.SDK_INT >= 28 -> AdGif(ad.image, Modifier.fillMaxSize())

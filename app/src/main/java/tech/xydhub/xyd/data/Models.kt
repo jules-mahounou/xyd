@@ -51,9 +51,18 @@ data class Announcement(
     val textTheme: String = "light",
     /** Texte du bouton (vide = pas de bouton ; le visuel reste cliquable s'il y a un lien). */
     val cta: String = "",
+    /** Format « libre » : proportions réelles du visuel (largeur / hauteur), mesurées par l'admin. */
+    val naturalAspect: Float = 0f,
 ) {
+    /** Format libre : visuel entier, non recadré, sans arrondi ajouté (ses bords font partie du dessin). */
+    val free: Boolean get() = ratio == "free"
+
     /** Largeur / hauteur du visuel. */
-    val aspect: Float get() = when (ratio) { "portrait" -> 2f / 3f; "square" -> 1f; "wide" -> 4f; else -> 16f / 9f }
+    val aspect: Float get() = when (ratio) {
+        "portrait" -> 2f / 3f; "square" -> 1f; "wide" -> 4f
+        "free" -> naturalAspect.takeIf { it in 0.2f..8f } ?: (16f / 9f)
+        else -> 16f / 9f
+    }
 
     /** Y a-t-il quelque chose à écrire sur le média ? */
     val hasOverlay: Boolean get() = showText && (title.isNotBlank() || description.isNotBlank() || cta.isNotBlank())
@@ -79,6 +88,8 @@ data class Category(
     val numberPosition: String = "bottom-start",
     /** false : section sans titre (visuel seul, ex. une bannière d'annonce). */
     val showTitle: Boolean = true,
+    /** Section automatique : "series" (toutes les séries) ou "films" (tous les films) ; null = choisie à la main. */
+    val auto: String? = null,
     /** Ordre de la section, titres et annonces mêlés : id d'un titre ou « a:<id> » d'une annonce. */
     val items: List<String> = titleIds,
 )
@@ -156,6 +167,7 @@ object Parse {
                     textPosition = l.optString("position", "left").ifBlank { "left" },
                     textTheme = l.optString("theme", "light").ifBlank { "light" },
                     cta = l.optString("cta"),
+                    naturalAspect = l.optDouble("aspect", 0.0).toFloat(),
                 )
             }
         }
@@ -174,6 +186,7 @@ object Parse {
             Category(
                 items = mixed,
                 showTitle = style?.optBoolean("showTitle", true) ?: true,
+                auto = style?.optString("auto")?.takeIf { it == "series" || it == "films" },
                 cardStyle = style?.optString("card")?.takeIf { it.isNotBlank() } ?: "poster",
                 sectionStyle = style?.optString("section")?.takeIf { it.isNotBlank() } ?: "row",
                 numberPosition = style?.optJSONObject("number")?.optString("position")?.takeIf { it.isNotBlank() } ?: "bottom-start",
