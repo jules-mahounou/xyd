@@ -53,7 +53,7 @@ jobs:
           R2_BUCKET: ${{ vars.R2_BUCKET || secrets.R2_BUCKET }}
         run: |
           if [ -z "$R2_ACCOUNT_ID" ]; then echo "::warning::Secrets R2 absents, étape ignorée."; exit 0; fi
-          supabase secrets set --project-ref "$PROJECT_REF" \
+          supabase secrets set --yes --project-ref "$PROJECT_REF" \
             R2_ACCOUNT_ID="$R2_ACCOUNT_ID" R2_ACCESS_KEY_ID="$R2_ACCESS_KEY_ID" \
             R2_SECRET_ACCESS_KEY="$R2_SECRET_ACCESS_KEY" R2_BUCKET="$R2_BUCKET"
 
@@ -68,11 +68,11 @@ jobs:
           if [ -z "$SMTP_HOST" ] || [ -z "$SMTP_PASSWORD" ]; then echo "::warning::Secrets SMTP absents : pas de mail d'inscription."; exit 0; fi
           ARGS=(SMTP_HOST="$SMTP_HOST" SMTP_PORT="$SMTP_PORT" SMTP_USER="$SMTP_USER" SMTP_PASSWORD="$SMTP_PASSWORD")
           [ -n "$SMTP_FROM" ] && ARGS+=(SMTP_FROM="$SMTP_FROM")
-          supabase secrets set --project-ref "$PROJECT_REF" "${ARGS[@]}"
+          supabase secrets set --yes --project-ref "$PROJECT_REF" "${ARGS[@]}"
 
       - name: Déployer les Edge Functions
         run: |
-          supabase functions deploy video-url --project-ref "$PROJECT_REF" --no-verify-jwt
+          supabase functions deploy video-url --yes --project-ref "$PROJECT_REF" --no-verify-jwt
           supabase functions deploy admin-r2 --project-ref "$PROJECT_REF" --no-verify-jwt
-          supabase functions deploy notify-signup --project-ref "$PROJECT_REF" --no-verify-jwt
-          supabase functions deploy admin-users --project-ref "$PROJECT_REF" --no-verify-jwt
+          supabase functions deploy notify-signup --yes --project-ref "$PROJECT_REF" --no-verify-jwt
+          supabase functions deploy admin-users --yes --project-ref "$PROJECT_REF" --no-verify-jwt
