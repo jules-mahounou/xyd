@@ -534,10 +534,39 @@ private fun Poster(t: Title, modifier: Modifier, onClick: (Title) -> Unit) {
 
 @Composable
 private fun PosterRow(titles: List<Title>, onClick: (Title) -> Unit) {
+    val flip = rememberFlipState()
     LazyRow(contentPadding = PaddingValues(horizontal = 20.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-        items(titles, key = { it.id }) { t -> Poster(t, Modifier.width(118.dp), onClick) }
+        items(titles, key = { it.id }) { t ->
+            if (t.isFilm) Poster(t, Modifier.width(118.dp), onClick)
+            else Column(Modifier.width(118.dp).flipGestures(t, flip, onClick)) {
+                FlipSeriesPoster(t, flip.value == t.id, onOpen = { flip.value = null; onClick(t) }, Modifier.fillMaxWidth())
+                Text(t.name, Modifier.padding(top = 6.dp), color = Xyd.Text, fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            }
+        }
     }
 }
+
+/** Une seule série retournée à la fois ; elle se remet d'elle-même au bout de 8 s. */
+@Composable
+private fun rememberFlipState(): androidx.compose.runtime.MutableState<String?> {
+    val flip = remember { mutableStateOf<String?>(null) }
+    LaunchedEffect(flip.value) { if (flip.value != null) { delay(8000); flip.value = null } }
+    return flip
+}
+
+/** Appui long : retourne la série (avec vibration). Toucher : ouvre la fiche, ou remet la carte si elle est retournée. */
+@OptIn(ExperimentalFoundationApi::class)
+private fun Modifier.flipGestures(t: Title, flip: androidx.compose.runtime.MutableState<String?>, onClick: (Title) -> Unit): Modifier =
+    androidx.compose.ui.composed {
+        val haptic = androidx.compose.ui.platform.LocalHapticFeedback.current
+        combinedClickable(
+            onClick = { if (flip.value == t.id) flip.value = null else onClick(t) },
+            onLongClick = {
+                haptic.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.LongPress)
+                flip.value = if (flip.value == t.id) null else t.id
+            },
+        )
+    }
 
 /** Grille 3 colonnes insérée dans la LazyColumn (une ligne = un item). */
 private fun androidx.compose.foundation.lazy.LazyListScope.posterGrid(titles: List<Title>, onClick: (Title) -> Unit) {
@@ -552,16 +581,19 @@ private fun androidx.compose.foundation.lazy.LazyListScope.posterGrid(titles: Li
 /** Rangée « classement » : grand numéro à gauche de l'affiche (Top 10). */
 @Composable
 private fun RankedRow(titles: List<Title>, onClick: (Title) -> Unit) {
+    val flip = rememberFlipState()
     LazyRow(contentPadding = PaddingValues(horizontal = 12.dp), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
         itemsIndexed(titles, key = { _, t -> t.id }) { i, t ->
-            Box(Modifier.width(if (i + 1 >= 10) 186.dp else 160.dp).clickable { onClick(t) }) {
+            Box(Modifier.width(if (i + 1 >= 10) 186.dp else 160.dp).then(if (t.isFilm) Modifier.clickable { onClick(t) } else Modifier.flipGestures(t, flip, onClick))) {
                 Text(
                     "${i + 1}",
                     Modifier.align(Alignment.BottomStart).offset(y = 18.dp),
                     color = Color(0xFF3A3A3A), fontSize = 112.sp, fontWeight = FontWeight.Black,
                     letterSpacing = (-6).sp, maxLines = 1, softWrap = false,
                 )
-                Box(Modifier.align(Alignment.CenterEnd).width(110.dp).aspectRatio(2f / 3f).clip(RoundedCornerShape(10.dp))) {
+                if (!t.isFilm) {
+                    FlipSeriesPoster(t, flip.value == t.id, onOpen = { flip.value = null; onClick(t) }, Modifier.align(Alignment.CenterEnd).width(110.dp))
+                } else Box(Modifier.align(Alignment.CenterEnd).width(110.dp).aspectRatio(2f / 3f).clip(RoundedCornerShape(10.dp))) {
                     RemoteImage(t.poster ?: t.backdrop, Modifier.fillMaxSize())
                     if (t.poster == null && t.backdrop == null) {
                         Text(t.name, Modifier.align(Alignment.Center).padding(8.dp), color = Xyd.Grey, fontWeight = FontWeight.SemiBold)
