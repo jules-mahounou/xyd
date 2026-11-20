@@ -62,6 +62,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.composed
 import androidx.compose.ui.zIndex
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.draw.blur
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -190,22 +192,25 @@ fun HomeScreen(onPlay: (String) -> Unit) {
             // Pastille de filtre seulement pour les sections titrées qui ont des séries / films.
             allRows.filter { (c, l) -> c.auto == null && c.showTitle && l.any { it.ad == null } }.forEach { (c, _) -> add("cat:${c.id}" to c.name) }
         }
+        // Fond de chaque filtre : le dernier contenu ajouté de ce qu'il filtre (flouté sous du verre).
+        val newest: (List<Title>) -> String? = { l -> l.filter { it.ad == null }.maxByOrNull { it.createdAt }?.let { it.backdrop ?: it.poster } }
+        val coverOf: (String) -> String? = { key ->
+            when (key) {
+                F_ALL -> newest(catalog)
+                F_SERIES -> newest(catalog.filter { !it.isFilm })
+                F_FILMS -> newest(catalog.filter { it.isFilm })
+                // Section : son premier élément (le dernier ajouté passe en tête dans l'admin).
+                else -> allRows.firstOrNull { "cat:${it.first.id}" == key }?.second?.firstOrNull { it.ad == null }?.let { it.backdrop ?: it.poster }
+            }
+        }
         if (options.size > 2) {
             LazyRow(
                 contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
             ) {
                 items(options, key = { it.first }) { (key, label) ->
                     val on = filter == key
-                    Text(
-                        label,
-                        Modifier.clip(RoundedCornerShape(18.dp))
-                            .background(if (on) Xyd.Grey else Xyd.Card)
-                            .border(1.dp, if (on) Xyd.Grey else Xyd.Line, RoundedCornerShape(18.dp))
-                            .clickable { filter = if (on && key != F_ALL) F_ALL else key }
-                            .padding(horizontal = 14.dp, vertical = 7.dp),
-                        color = if (on) Xyd.Black else Color.White, fontSize = 13.sp, fontWeight = FontWeight.Medium,
-                    )
+                    FilterPill(label, coverOf(key), on) { filter = if (on && key != F_ALL) F_ALL else key }
                 }
             }
         }
@@ -560,6 +565,48 @@ private fun Poster(t: Title, modifier: Modifier, onClick: (Title) -> Unit) {
             }
         }
         Text(t.name, Modifier.padding(top = 6.dp), color = Xyd.Text, fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+    }
+}
+
+/**
+ * Filtre de l'accueil : pastille en verre sur l'image floutée du dernier contenu qu'elle filtre.
+ * Sélectionnée : image plus présente, liseré blanc et halo bleu (même bleu que les boutons « Surge »).
+ */
+@Composable
+private fun FilterPill(label: String, cover: String?, on: Boolean, onClick: () -> Unit) {
+    val shape = RoundedCornerShape(50)
+    val dim by androidx.compose.animation.core.animateFloatAsState(if (on) 0.28f else 0.62f, label = "pill-dim")
+    Box(
+        Modifier.height(34.dp)
+            .then(if (on) Modifier.drawBehind {
+                // Halo bleu sous la pastille active.
+                drawRoundRect(
+                    Brush.radialGradient(listOf(Color(0x664C6BFF), Color.Transparent), radius = size.width * 0.8f),
+                    topLeft = androidx.compose.ui.geometry.Offset(-8.dp.toPx(), -6.dp.toPx()),
+                    size = androidx.compose.ui.geometry.Size(size.width + 16.dp.toPx(), size.height + 12.dp.toPx()),
+                    cornerRadius = androidx.compose.ui.geometry.CornerRadius(size.height),
+                )
+            } else Modifier)
+            .clip(shape)
+            .background(Xyd.Card)
+            .clickable(onClick = onClick),
+        contentAlignment = Alignment.Center,
+    ) {
+        if (cover != null) {
+            RemoteImage(cover, Modifier.matchParentSize().blur(if (on) 6.dp else 10.dp))
+        }
+        // Verre : voile sombre + reflet en haut + liseré.
+        Box(
+            Modifier.matchParentSize().background(Color.Black.copy(alpha = dim))
+                .background(Brush.verticalGradient(0f to Color.White.copy(alpha = if (on) 0.22f else 0.10f), 0.5f to Color.Transparent))
+                .border(if (on) 1.2.dp else 1.dp, Color.White.copy(alpha = if (on) 0.85f else 0.14f), shape),
+        )
+        Text(
+            label,
+            Modifier.padding(horizontal = 15.dp),
+            color = Color.White, fontSize = 13.sp,
+            fontWeight = if (on) FontWeight.Bold else FontWeight.Medium, letterSpacing = 0.2.sp, maxLines = 1,
+        )
     }
 }
 
