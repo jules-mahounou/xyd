@@ -66,6 +66,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.blur
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
@@ -575,45 +576,63 @@ private fun Poster(t: Title, modifier: Modifier, onClick: (Title) -> Unit) {
 }
 
 /**
- * Filtre de l'accueil : pastille en verre sur l'image floutée du dernier contenu qu'elle filtre.
- * Sélectionnée : image plus présente, liseré blanc et halo bleu (même bleu que les boutons « Surge »).
+ * Filtre de l'accueil : tuile en verre sur l'image floutée du dernier contenu qu'elle filtre,
+ * avec à droite ce même visuel net, posé légèrement incliné comme les fiches des dossiers
+ * de téléchargement. Active : liseré blanc, halo bleu (même bleu que les boutons « Surge »).
  */
 @Composable
 private fun FilterPill(label: String, cover: String?, on: Boolean, onClick: () -> Unit) {
-    // Rectangle aux coins juste arrondis (plus une pilule).
-    val shape = RoundedCornerShape(9.dp)
-    val dim by androidx.compose.animation.core.animateFloatAsState(if (on) 0.28f else 0.62f, label = "pill-dim")
+    val shape = RoundedCornerShape(10.dp)
+    val dim by androidx.compose.animation.core.animateFloatAsState(if (on) 0.30f else 0.58f, label = "pill-dim")
+    val lift by androidx.compose.animation.core.animateFloatAsState(if (on) 1f else 0f, label = "pill-lift")
     Box(
-        Modifier.height(36.dp)
+        Modifier.height(46.dp)
             .then(if (on) Modifier.drawBehind {
-                // Halo bleu sous la pastille active.
                 drawRoundRect(
                     Brush.radialGradient(listOf(Color(0x664C6BFF), Color.Transparent), radius = size.width * 0.8f),
                     topLeft = androidx.compose.ui.geometry.Offset(-8.dp.toPx(), -6.dp.toPx()),
                     size = androidx.compose.ui.geometry.Size(size.width + 16.dp.toPx(), size.height + 12.dp.toPx()),
-                    cornerRadius = androidx.compose.ui.geometry.CornerRadius(14.dp.toPx()),
+                    cornerRadius = androidx.compose.ui.geometry.CornerRadius(16.dp.toPx()),
                 )
             } else Modifier)
             .clip(shape)
             .background(Xyd.Card)
             .clickable(onClick = onClick),
-        contentAlignment = Alignment.Center,
+        contentAlignment = Alignment.CenterStart,
     ) {
-        if (cover != null) {
-            RemoteImage(cover, Modifier.matchParentSize().blur(if (on) 6.dp else 10.dp))
-        }
-        // Verre : voile sombre + reflet en haut + liseré.
+        if (cover != null) RemoteImage(cover, Modifier.matchParentSize().blur(12.dp))
+        // Verre : voile + reflet en haut.
         Box(
             Modifier.matchParentSize().background(Color.Black.copy(alpha = dim))
-                .background(Brush.verticalGradient(0f to Color.White.copy(alpha = if (on) 0.22f else 0.10f), 0.5f to Color.Transparent))
-                .border(if (on) 1.2.dp else 1.dp, Color.White.copy(alpha = if (on) 0.85f else 0.14f), shape),
+                .background(Brush.verticalGradient(0f to Color.White.copy(alpha = if (on) 0.20f else 0.09f), 0.5f to Color.Transparent)),
         )
-        Text(
-            label,
-            Modifier.padding(horizontal = 14.dp),
-            color = Color.White, fontSize = 13.sp,
-            fontWeight = if (on) FontWeight.Bold else FontWeight.Medium, letterSpacing = 0.2.sp, maxLines = 1,
-        )
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                label,
+                Modifier.padding(start = 14.dp, end = if (cover != null) 10.dp else 14.dp),
+                color = Color.White, fontSize = 15.sp,
+                fontWeight = if (on) FontWeight.Bold else FontWeight.SemiBold, maxLines = 1,
+            )
+            if (cover != null) {
+                // Visuel net du dernier contenu : fiche inclinée qui dépasse vers le bas, comme dans les dossiers.
+                Box(Modifier.width(58.dp).height(46.dp)) {
+                    Box(
+                        Modifier.width(60.dp).height(40.dp)
+                            .graphicsLayer {
+                                translationY = (12f - 6f * lift) * density
+                                translationX = 4f * density
+                                rotationZ = -7f + 3f * lift
+                                transformOrigin = androidx.compose.ui.graphics.TransformOrigin(0.5f, 1f)
+                                shadowElevation = 6f * density
+                                shape = RoundedCornerShape(6.dp); clip = true
+                            }
+                            .border(1.dp, Color.White.copy(alpha = 0.22f), RoundedCornerShape(6.dp)),
+                    ) { RemoteImage(cover, Modifier.matchParentSize()) }
+                }
+            }
+        }
+        // Liseré par-dessus tout.
+        Box(Modifier.matchParentSize().border(if (on) 1.3.dp else 1.dp, Color.White.copy(alpha = if (on) 0.85f else 0.12f), shape))
     }
 }
 
