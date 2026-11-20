@@ -142,6 +142,30 @@ jobs:
           path: xyd-beta.apk
           retention-days: 30
 
+      # La bêta de la branche design/beta est mise en ligne à côté de l'APK prod.
+      # « xyd β » lit xyd-beta.json et propose la mise à jour toute seule (jamais forcée).
+      - name: Upload FTP bêta (xyd-beta.apk + xyd-beta.json)
+        if: steps.beta.outputs.ok == 'true' && github.ref == 'refs/heads/design/beta'
+        env:
+          FTP_HOST: ${{ secrets.FTP_HOST }}
+          FTP_USER: ${{ secrets.FTP_USER }}
+          FTP_PASSWORD: ${{ secrets.FTP_PASSWORD }}
+          FTP_DIR: ${{ vars.FTP_DIR }}
+          COMMIT_MSG: ${{ github.event.head_commit.message }}
+        run: |
+          if [ -z "$FTP_HOST" ]; then echo "::warning::FTP non configuré : bêta non mise en ligne."; exit 0; fi
+          DIR="${FTP_DIR#/}"; DIR="${DIR%/}"; [ "$DIR" = "." ] && DIR=""
+          up() { curl -sS --fail --ftp-create-dirs --user "$FTP_USER:$FTP_PASSWORD" -T "$1" "ftp://$FTP_HOST/${DIR:+$DIR/}$2"; }
+          CODE=${{ steps.v.outputs.code }}
+          jq -n --argjson c "$CODE" --arg n "${{ steps.v.outputs.name }}-beta" \
+            --arg u "https://xydhub.tech/xyd-beta.apk?v=$CODE" --arg l "$(printf '%s' "$COMMIT_MSG" | head -1)" \
+            '{version_code:$c, version_name:$n, apk_url:$u, changelog:$l}' > xyd-beta.json
+          cat xyd-beta.json
+          # APK d'abord, puis le fichier de version : l'appli ne voit jamais une version dont l'APK n'est pas encore en ligne.
+          up xyd-beta.apk xyd-beta.apk
+          up xyd-beta.json xyd-beta.json
+          echo "Bêta en ligne : https://xydhub.tech/xyd-beta.apk"
+
       # ------------------------------------------------------------ Publication
       - name: Release GitHub
         if: env.PUBLISH == 'true'

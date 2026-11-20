@@ -295,9 +295,23 @@ object Repo {
 
     // ---------- Mises à jour ----------
 
+    private suspend fun latestBeta(): AppVersion? {
+        val r = Http.request("${BuildConfig.BETA_FEED_URL}?t=${System.currentTimeMillis()}")
+        if (!r.ok) return null
+        val o = org.json.JSONObject(r.body)
+        return AppVersion(
+            versionCode = o.getInt("version_code"),
+            versionName = o.optString("version_name"),
+            minVersionCode = 0,
+            apkUrl = o.optString("apk_url"),
+            changelog = o.optString("changelog"),
+        )
+    }
+
     suspend fun checkUpdate() {
-        if (!Supabase.configured || BuildConfig.BETA) return // l'appli de test ne propose jamais de mise à jour
-        val v = runCatching { Supabase.latestVersion() }.getOrNull() ?: return
+        if (!Supabase.configured) return
+        // Bêta : suit son propre fichier de version (jamais la version prod), sans mise à jour forcée.
+        val v = runCatching { if (BuildConfig.BETA) latestBeta() else Supabase.latestVersion() }.getOrNull() ?: return
         update.value = if (v.versionCode > BuildConfig.VERSION_CODE && v.apkUrl.isNotBlank()) v else null
     }
 }

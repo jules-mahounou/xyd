@@ -30,6 +30,8 @@ android {
         // Nom affiché et drapeau « bêta » : redéfinis par le type de build beta.
         resValue("string", "app_name", "xyd")
         buildConfigField("boolean", "BETA", "false")
+        // Bêta : fichier de version publié par la CI à côté de l'APK (https://xydhub.tech/xyd-beta.json).
+        buildConfigField("String", "BETA_FEED_URL", "\"${cfg("XYD_BETA_FEED_URL", "xyd.betaFeedUrl", "https://xydhub.tech/xyd-beta.json")}\"")
 
         buildConfigField("String", "SUPABASE_URL", "\"${cfg("SUPABASE_URL", "supabase.url").trimEnd('/')}\"")
         buildConfigField("String", "SUPABASE_KEY", "\"${cfg("SUPABASE_ANON_KEY", "supabase.anonKey")}\"")
