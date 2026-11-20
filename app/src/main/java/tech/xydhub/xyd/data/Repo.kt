@@ -33,6 +33,9 @@ object Repo {
     val catalog: StateFlow<List<Title>> = _catalog
     private val _categories = MutableStateFlow<List<Category>>(emptyList())
     val categories: StateFlow<List<Category>> = _categories
+    /** Annonces publiées, par id. */
+    private val _ads = MutableStateFlow<Map<String, Announcement>>(emptyMap())
+    val ads: StateFlow<Map<String, Announcement>> = _ads
     val loading = MutableStateFlow(false)
     /** "blocked" : compte suspendu, l'accueil affiche un écran dédié au lieu du catalogue. */
     val accountStatus = MutableStateFlow<String?>(null)
@@ -127,6 +130,8 @@ object Repo {
                 error.value = null
                 withContext(Dispatchers.IO) { catalogFile.writeText(json) }
                 // Catégories : facultatives (table absente = simplement pas de rangées personnalisées).
+                // Annonces : facultatives aussi (table absente = aucune annonce).
+                runCatching { _ads.value = Parse.announcements(Supabase.fetchAnnouncements()).associateBy { it.id } }
                 runCatching {
                     val cj = Supabase.fetchCategories()
                     _categories.value = Parse.categories(cj)

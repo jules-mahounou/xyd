@@ -219,7 +219,7 @@ private fun AccordionCard(t: Title, index: Int, total: Int, e: Float, wide: Dp, 
                         Spacer(Modifier.weight(1f))
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Text(
-                                listOfNotNull(if (t.isFilm) "Film" else "Série", t.year.takeIf { it > 0 }?.toString()).joinToString(" · "),
+                                listOfNotNull(if (t.ad != null) "Annonce" else if (t.isFilm) "Film" else "Série", t.year.takeIf { it > 0 }?.toString()).joinToString(" · "),
                                 color = Color.White.copy(alpha = 0.6f), fontSize = 9.sp, fontFamily = FontFamily.Monospace,
                                 modifier = Modifier.weight(1f),
                             )

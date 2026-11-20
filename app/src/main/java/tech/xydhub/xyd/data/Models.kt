@@ -27,7 +27,29 @@ data class Title(
     val seasons: List<Season>,
     val featured: Boolean = false,
     val createdAt: String = "",
+    /** Non nul : cette « carte » est une annonce (visuel + lien), pas une série ni un film. */
+    val ad: Announcement? = null,
 )
+
+/** Annonce créée dans l'admin : visuel portrait / carré / paysage, lien facultatif. */
+data class Announcement(
+    val id: String,
+    val title: String,
+    val description: String,
+    val image: String?,
+    /** "portrait" (2:3), "square" (1:1) ou "landscape" (16:9). */
+    val ratio: String,
+    val link: String?,
+) {
+    /** Largeur / hauteur du visuel. */
+    val aspect: Float get() = when (ratio) { "portrait" -> 2f / 3f; "square" -> 1f; else -> 16f / 9f }
+
+    /** Carte d'une rangée : réutilise les rendus des titres (id préfixé « a: »). */
+    fun asTitle() = Title(
+        id = "a:$id", isFilm = false, name = title, synopsis = description, poster = image, backdrop = image,
+        year = 0, durationS = 0, sizeBytes = 0, seasons = emptyList(), ad = this,
+    )
+}
 
 /** Rangée de l'accueil définie dans l'admin (Top 10, Anime…). `titleIds` déjà triés. */
 data class Category(
@@ -41,6 +63,10 @@ data class Category(
     val sectionStyle: String = "row",
     /** Position des grands numéros d'une section classée : bottom-start, top-start, bottom-end, top-end. */
     val numberPosition: String = "bottom-start",
+    /** false : section sans titre (visuel seul, ex. une bannière d'annonce). */
+    val showTitle: Boolean = true,
+    /** Ordre de la section, titres et annonces mêlés : id d'un titre ou « a:<id> » d'une annonce. */
+    val items: List<String> = titleIds,
 )
 
 /** Un élément lisible : un film, ou un épisode d'une série. `mediaId` = id du film ou de l'épisode. */
@@ -96,13 +122,34 @@ data class UserRequest(
 )
 
 object Parse {
+    fun announcements(json: String): List<Announcement> {
+        val arr = JSONArray(json)
+        return (0 until arr.length()).map { i ->
+            val o = arr.getJSONObject(i)
+            Announcement(
+                id = o.getString("id"),
+                title = o.optString("title"),
+                description = o.optString("description"),
+                image = o.optString("image_url").takeIf { it.isNotBlank() && it != "null" },
+                ratio = o.optString("ratio", "landscape"),
+                link = o.optString("link_url").takeIf { it.startsWith("http://") || it.startsWith("https://") },
+            )
+        }
+    }
+
     fun categories(json: String): List<Category> {
         val arr = JSONArray(json)
         return (0 until arr.length()).map { i ->
             val o = arr.getJSONObject(i)
             val links = o.optJSONArray("title_categories") ?: JSONArray()
+            val adLinks = o.optJSONArray("announcement_categories") ?: JSONArray()
             val style = o.optJSONObject("style")
+            val mixed = ((0 until links.length()).map { links.getJSONObject(it).let { l -> l.optInt("position") to l.getString("title_id") } } +
+                (0 until adLinks.length()).map { adLinks.getJSONObject(it).let { l -> l.optInt("position") to "a:" + l.getString("announcement_id") } })
+                .sortedBy { it.first }.map { it.second }
             Category(
+                items = mixed,
+                showTitle = style?.optBoolean("showTitle", true) ?: true,
                 cardStyle = style?.optString("card")?.takeIf { it.isNotBlank() } ?: "poster",
                 sectionStyle = style?.optString("section")?.takeIf { it.isNotBlank() } ?: "row",
                 numberPosition = style?.optJSONObject("number")?.optString("position")?.takeIf { it.isNotBlank() } ?: "bottom-start",

@@ -100,6 +100,7 @@ fun HomeScreen(onPlay: (String) -> Unit) {
     val session by Repo.session.collectAsStateWithLifecycle()
     val catalog by Repo.catalog.collectAsStateWithLifecycle()
     val categories by Repo.categories.collectAsStateWithLifecycle()
+    val ads by Repo.ads.collectAsStateWithLifecycle()
     val progress by Repo.progress.collectAsStateWithLifecycle()
     val hidden by Repo.hiddenResume.collectAsStateWithLifecycle()
     val loading by Repo.loading.collectAsStateWithLifecycle()
@@ -113,14 +114,29 @@ fun HomeScreen(onPlay: (String) -> Unit) {
     var resumeMenu by rememberSaveable { mutableStateOf<String?>(null) } // mediaId
     val download = rememberDownloader()
 
-    // Rangées de l'admin : titres résolus dans l'ordre choisi, catégories vides masquées.
-    val allRows = remember(catalog, categories) {
+    // Rangées de l'admin : titres et annonces résolus dans l'ordre choisi, catégories vides masquées.
+    val allRows = remember(catalog, categories, ads) {
         val byId = catalog.associateBy { it.id }
-        categories.map { c -> c to c.titleIds.mapNotNull { byId[it] } }.filter { it.second.isNotEmpty() }
+        categories.map { c ->
+            c to c.items.mapNotNull { k -> if (k.startsWith("a:")) ads[k.removePrefix("a:")]?.asTitle() else byId[k] }
+        }.filter { it.second.isNotEmpty() }
+    }
+    val ctx = LocalContext.current
+    // Toucher une carte : fiche d'une série / d'un film ; une annonce ouvre son lien (sans lien : rien).
+    val open: (Title) -> Unit = { t ->
+        val ad = t.ad
+        if (ad == null) sheet = t.id
+        else ad.link?.let { url ->
+            runCatching {
+                ctx.startActivity(android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse(url))
+                    .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK))
+            }
+        }
     }
     val catFilter = filter.removePrefix("cat:").takeIf { filter.startsWith("cat:") }
+    // Les annonces ne restent que sur « Tout ».
     val keep: (Title) -> Boolean = when (filter) {
-        F_SERIES -> { t -> !t.isFilm }
+        F_SERIES -> { t -> !t.isFilm && t.ad == null }
         F_FILMS -> { t -> t.isFilm }
         else -> { _ -> true }
     }
@@ -136,7 +152,8 @@ fun HomeScreen(onPlay: (String) -> Unit) {
     }
     // À la une : titres marqués dans l'admin, sinon les 3 plus récents.
     val hero = remember(visible) {
-        visible.filter { it.featured }.take(6).ifEmpty { visible.sortedByDescending { it.createdAt }.take(3) }
+        val real = visible.filter { it.ad == null }
+        real.filter { it.featured }.take(6).ifEmpty { real.sortedByDescending { it.createdAt }.take(3) }
     }
     val active = downloads.values.count { it.status == DlStatus.RUNNING || it.status == DlStatus.QUEUED }
 
@@ -165,7 +182,8 @@ fun HomeScreen(onPlay: (String) -> Unit) {
             add(F_ALL to "Tout")
             if (catalog.any { !it.isFilm }) add(F_SERIES to "Séries")
             if (catalog.any { it.isFilm }) add(F_FILMS to "Films")
-            allRows.forEach { (c, _) -> add("cat:${c.id}" to c.name) }
+            // Pastille de filtre seulement pour les sections titrées qui ont des séries / films.
+            allRows.filter { (c, l) -> c.showTitle && l.any { it.ad == null } }.forEach { (c, _) -> add("cat:${c.id}" to c.name) }
         }
         if (options.size > 2) {
             LazyRow(
@@ -231,14 +249,16 @@ fun HomeScreen(onPlay: (String) -> Unit) {
             }
 
             rows.forEach { (c, list) ->
-                item(key = "cat-" + c.id) { SectionTitle(c.name) }
+                // Section sans titre (réglée dans l'admin) : juste un peu d'air au-dessus du visuel.
+                item(key = "cat-" + c.id) { if (c.showTitle) SectionTitle(c.name) else Spacer(Modifier.height(18.dp)) }
                 item(key = "row-" + c.id) {
                     // Style choisi dans l'admin pour cette section.
                     when {
-                        c.cardStyle == "accordion" -> AccordionRow(list) { sheet = it.id }
-                        c.cardStyle == "warp" -> WarpCarousel(list) { sheet = it.id }
-                        c.ranked -> RankedRow(list, c.numberPosition) { sheet = it.id }
-                        else -> PosterRow(list) { sheet = it.id }
+                        c.sectionStyle == "banner" -> BannerRow(list, open)
+                        c.cardStyle == "accordion" -> AccordionRow(list, open)
+                        c.cardStyle == "warp" -> WarpCarousel(list, open)
+                        c.ranked -> RankedRow(list, c.numberPosition, open)
+                        else -> PosterRow(list, open)
                     }
                 }
             }
@@ -253,7 +273,7 @@ fun HomeScreen(onPlay: (String) -> Unit) {
                     }
                     if (visible.isNotEmpty()) {
                         item { SectionTitle(label) }
-                        posterGrid(visible) { sheet = it.id }
+                        posterGrid(visible, open)
                     }
                 }
                 else -> {
@@ -540,12 +560,55 @@ private fun Poster(t: Title, modifier: Modifier, onClick: (Title) -> Unit) {
     }
 }
 
+/** Annonce dans une rangée d'affiches : même hauteur que les affiches, largeur selon son format. */
+@Composable
+private fun AdPoster(t: Title, onClick: (Title) -> Unit) {
+    val ad = t.ad ?: return
+    val h = 118.dp * 1.5f
+    Column(Modifier.width(h * ad.aspect).clickable(enabled = ad.link != null) { onClick(t) }) {
+        Box(Modifier.fillMaxWidth().height(h).clip(RoundedCornerShape(10.dp))) {
+            RemoteImage(ad.image, Modifier.fillMaxSize())
+        }
+        if (ad.title.isNotBlank()) {
+            Text(ad.title, Modifier.padding(top = 6.dp), color = Xyd.Text, fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        }
+    }
+}
+
+/**
+ * Style de section « Bannière » : visuels pleine largeur, à leur format (un seul = toute la largeur,
+ * plusieurs = défilement horizontal avec le suivant qui dépasse). Tout le visuel est cliquable.
+ */
+@Composable
+private fun BannerRow(titles: List<Title>, onClick: (Title) -> Unit) {
+    androidx.compose.foundation.layout.BoxWithConstraints(Modifier.fillMaxWidth()) {
+        val w = if (titles.size == 1) maxWidth - 32.dp else maxWidth - 56.dp
+        LazyRow(contentPadding = PaddingValues(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            items(titles, key = { it.id }) { t ->
+                val aspect = t.ad?.aspect ?: (16f / 9f)
+                val clickable = t.ad == null || t.ad.link != null
+                Box(
+                    Modifier.width(w).aspectRatio(aspect).clip(RoundedCornerShape(14.dp))
+                        .then(if (clickable) Modifier.clickable { onClick(t) } else Modifier),
+                ) {
+                    RemoteImage(if (t.ad != null) t.ad.image else (t.backdrop ?: t.poster), Modifier.fillMaxSize())
+                    if (t.ad == null) {
+                        Box(Modifier.fillMaxSize().background(androidx.compose.ui.graphics.Brush.verticalGradient(0.55f to Color.Transparent, 1f to Color(0xB3000000))))
+                        Text(t.name, Modifier.align(Alignment.BottomStart).padding(14.dp), color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    }
+                }
+            }
+        }
+    }
+}
+
 @Composable
 private fun PosterRow(titles: List<Title>, onClick: (Title) -> Unit) {
     val flip = rememberFlipState()
     LazyRow(contentPadding = PaddingValues(horizontal = 20.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
         items(titles, key = { it.id }) { t ->
-            if (t.isFilm) Poster(t, Modifier.width(118.dp), onClick)
+            if (t.ad != null) AdPoster(t, onClick)
+            else if (t.isFilm) Poster(t, Modifier.width(118.dp), onClick)
             else Column(Modifier.zIndex(if (flip.value == t.id) 1f else 0f).width(118.dp).flipGestures(t, flip, onClick)) {
                 FlipSeriesPoster(t, flip.value == t.id, onOpen = { flip.value = null; onClick(t) }, Modifier.fillMaxWidth())
                 Text(t.name, Modifier.padding(top = 6.dp), color = Xyd.Text, fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
@@ -595,7 +658,7 @@ private fun RankedRow(titles: List<Title>, numberPosition: String = "bottom-star
     val flip = rememberFlipState()
     LazyRow(contentPadding = PaddingValues(horizontal = 12.dp), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
         itemsIndexed(titles, key = { _, t -> t.id }) { i, t ->
-            Box(Modifier.zIndex(if (flip.value == t.id) 1f else 0f).width(if (i + 1 >= 10) 186.dp else 160.dp).then(if (t.isFilm) Modifier.clickable { onClick(t) } else Modifier.flipGestures(t, flip, onClick))) {
+            Box(Modifier.zIndex(if (flip.value == t.id) 1f else 0f).width(if (i + 1 >= 10) 186.dp else 160.dp).then(if (t.isFilm || t.ad != null) Modifier.clickable(enabled = t.ad == null || t.ad.link != null) { onClick(t) } else Modifier.flipGestures(t, flip, onClick))) {
                 Text(
                     "${i + 1}",
                     Modifier.align(
@@ -609,7 +672,7 @@ private fun RankedRow(titles: List<Title>, numberPosition: String = "bottom-star
                     color = Color(0xFF3A3A3A), fontSize = 112.sp, fontWeight = FontWeight.Black,
                     letterSpacing = (-6).sp, maxLines = 1, softWrap = false,
                 )
-                if (!t.isFilm) {
+                if (!t.isFilm && t.ad == null) {
                     FlipSeriesPoster(t, flip.value == t.id, onOpen = { flip.value = null; onClick(t) }, Modifier.align(if (end) Alignment.CenterStart else Alignment.CenterEnd).width(110.dp))
                 } else Box(Modifier.align(if (end) Alignment.CenterStart else Alignment.CenterEnd).width(110.dp).aspectRatio(2f / 3f).clip(RoundedCornerShape(10.dp))) {
                     RemoteImage(t.poster ?: t.backdrop, Modifier.fillMaxSize())

@@ -134,9 +134,9 @@ fun WarpCarousel(titles: List<Title>, onClick: (Title) -> Unit) {
         val shaded = warp != null
         val cardW = (maxWidth * (if (shaded) 0.5f else 0.42f)).coerceIn(140.dp, 260.dp)
         val cardH = cardW * 1.45f
-        // Les bords courbés grandissent jusqu'à ~1,6× : on réserve cette hauteur + une marge,
+        // Les bords courbés grandissent (jusqu'à ~1,6× tout au bord) : on réserve l'essentiel de cette hauteur,
         // pour que le carrousel ne déborde ni sur le titre de la section ni sur la section suivante.
-        val height = if (shaded) cardH * 1.62f + 36.dp else cardH + 44.dp
+        val height = if (shaded) cardH * 1.42f + 6.dp else cardH + 44.dp
         val stepPx = with(dens) { (cardW * (if (shaded) 1.08f else 0.9f)).toPx() }
         // Vitesse lissée (px / image) : alimente la traînée du shader pendant le glissement et le calage.
         var smear by remember { mutableFloatStateOf(0f) }
@@ -245,7 +245,7 @@ private fun WarpCard(t: Title, index: Int, total: Int, d: Float, modifier: Modif
         Column(Modifier.align(Alignment.BottomStart).padding(horizontal = 11.dp, vertical = 10.dp).graphicsLayer { alpha = 0.35f + 0.65f * focus }) {
             Text(t.name, color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, maxLines = 2, overflow = TextOverflow.Ellipsis, lineHeight = 17.sp)
             Text(
-                listOfNotNull(if (t.isFilm) "Film" else "Série", t.year.takeIf { it > 0 }?.toString()).joinToString(" · "),
+                listOfNotNull(if (t.ad != null) "Annonce" else if (t.isFilm) "Film" else "Série", t.year.takeIf { it > 0 }?.toString()).joinToString(" · "),
                 color = Color.White.copy(alpha = 0.6f), fontSize = 10.sp, fontFamily = FontFamily.Monospace,
             )
         }

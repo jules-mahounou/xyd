@@ -122,8 +122,15 @@ object Supabase {
             "&published=eq.true&order=sort.asc,created_at.desc"
     )
 
-    suspend fun fetchCategories(): String = authedOk(
-        "/rest/v1/categories?select=*,title_categories(title_id,position)&order=sort.asc,created_at.asc"
+    /** Avec les annonces des sections ; si leur table n'existe pas encore, sans elles. */
+    suspend fun fetchCategories(): String = runCatching {
+        authedOk("/rest/v1/categories?select=*,title_categories(title_id,position),announcement_categories(announcement_id,position)&order=sort.asc,created_at.asc")
+    }.getOrElse {
+        authedOk("/rest/v1/categories?select=*,title_categories(title_id,position)&order=sort.asc,created_at.asc")
+    }
+
+    suspend fun fetchAnnouncements(): String = authedOk(
+        "/rest/v1/announcements?select=id,title,description,image_url,ratio,link_url&published=eq.true"
     )
 
     /** Statut du compte connecté : "active" ou "blocked" (null si inconnu). */
