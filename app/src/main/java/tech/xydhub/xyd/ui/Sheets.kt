@@ -1,5 +1,16 @@
 package tech.xydhub.xyd.ui
 
+import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.MutableState
+import androidx.compose.runtime.compositionLocalOf
+import androidx.compose.ui.composed
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.input.pointer.positionChange
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -94,7 +105,41 @@ import tech.xydhub.xyd.download.DlStatus
 import tech.xydhub.xyd.download.DownloadItem
 import tech.xydhub.xyd.download.Downloads
 
-/** Bottom sheet standard de l'app (fond noir, poignée discrète). */
+/** « Agrandi par l'utilisateur » pour le sheet courant (en-tête glissé vers le haut). */
+val LocalSheetExpand = compositionLocalOf<MutableState<Boolean>?> { null }
+
+/** Hauteur max par défaut d'un sheet : la liste défile dedans, le haut de l'écran reste visible. */
+private const val SHEET_MAX_FRACTION = 0.86f
+
+/**
+ * Glisser (ou appui long puis glisser) vers le haut : le sheet passe en plein écran.
+ * Vers le bas quand il est agrandi : il revient à sa hauteur normale, sans se fermer.
+ */
+private fun Modifier.expandDrag(expanded: MutableState<Boolean>): Modifier = pointerInput(expanded) {
+    val threshold = 28.dp.toPx()
+    awaitEachGesture {
+        val down = awaitFirstDown(requireUnconsumed = false)
+        var dy = 0f
+        var handled = false
+        while (true) {
+            val ch = awaitPointerEvent().changes.firstOrNull { it.id == down.id } ?: break
+            if (!ch.pressed) break
+            dy += ch.positionChange().y
+            if (!handled && dy < -threshold && !expanded.value) { expanded.value = true; handled = true }
+            if (!handled && dy > threshold && expanded.value) { expanded.value = false; handled = true }
+            // On garde le geste pour nous quand il monte ou quand il sert à réduire ; sinon le sheet peut se fermer normalement.
+            if (handled || dy < 0f || expanded.value) ch.consume()
+        }
+    }
+}
+
+/** À poser sur l'en-tête d'un sheet : même geste que la poignée. */
+fun Modifier.sheetHeaderDrag(): Modifier = composed {
+    val exp = LocalSheetExpand.current
+    if (exp == null) this else this.expandDrag(exp)
+}
+
+/** Bottom sheet standard de l'app (fond noir, poignée discrète, hauteur limitée par défaut). */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun XSheet(
@@ -106,6 +151,9 @@ fun XSheet(
         skipPartiallyExpanded = true,
         confirmValueChange = { !locked || it != SheetValue.Hidden },
     )
+    val expanded = remember { mutableStateOf(false) }
+    val screenH = LocalConfiguration.current.screenHeightDp.dp
+    val maxH by animateDpAsState(if (expanded.value) screenH else screenH * SHEET_MAX_FRACTION, label = "sheet-max")
     ModalBottomSheet(
         onDismissRequest = { if (!locked) onDismiss() },
         sheetState = state,
@@ -113,10 +161,19 @@ fun XSheet(
         contentColor = Xyd.Text,
         scrimColor = Color(0xB3000000),
         dragHandle = if (locked) null else {
-            { Box(Modifier.padding(vertical = 10.dp).size(36.dp, 4.dp).clip(RoundedCornerShape(2.dp)).background(Xyd.Line)) }
+            {
+                // Zone de prise large (toute la largeur) : glisser vers le haut = plein écran.
+                Box(Modifier.fillMaxWidth().expandDrag(expanded).padding(vertical = 10.dp), contentAlignment = Alignment.Center) {
+                    Box(Modifier.size(36.dp, 4.dp).clip(RoundedCornerShape(2.dp)).background(if (expanded.value) Xyd.Grey else Xyd.Line))
+                }
+            }
         },
         properties = ModalBottomSheetProperties(shouldDismissOnBackPress = !locked),
-    ) { content() }
+    ) {
+        CompositionLocalProvider(LocalSheetExpand provides expanded) {
+            Box(Modifier.fillMaxWidth().heightIn(max = maxH)) { content() }
+        }
+    }
 }
 
 // ---------------------------------------------------------------- Auth
@@ -449,7 +506,7 @@ fun DownloadsSheet(onPlay: (String) -> Unit, onDismiss: () -> Unit) {
 
     XSheet(onDismiss) {
         Column(Modifier.fillMaxWidth().navigationBarsPadding()) {
-            Row(Modifier.padding(horizontal = 20.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+            Row(Modifier.sheetHeaderDrag().padding(horizontal = 20.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
                 Text("Téléchargements", fontSize = 20.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
                 Text(fmtSize(used).ifBlank { "0 Mo" }, color = Xyd.Muted, fontSize = 13.sp)
             }
