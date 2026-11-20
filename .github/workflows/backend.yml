@@ -72,7 +72,7 @@ jobs:
 
       - name: Déployer les Edge Functions
         run: |
-          supabase functions deploy video-url --yes --project-ref "$PROJECT_REF" --no-verify-jwt
-          supabase functions deploy admin-r2 --project-ref "$PROJECT_REF" --no-verify-jwt
-          supabase functions deploy notify-signup --yes --project-ref "$PROJECT_REF" --no-verify-jwt
-          supabase functions deploy admin-users --yes --project-ref "$PROJECT_REF" --no-verify-jwt
+          supabase functions deploy video-url --yes --project-ref "$PROJECT_REF" --no-verify-jwt --use-api
+          supabase functions deploy admin-r2 --yes --project-ref "$PROJECT_REF" --no-verify-jwt --use-api
+          supabase functions deploy notify-signup --yes --project-ref "$PROJECT_REF" --no-verify-jwt --use-api
+          supabase functions deploy admin-users --yes --project-ref "$PROJECT_REF" --no-verify-jwt --use-api
