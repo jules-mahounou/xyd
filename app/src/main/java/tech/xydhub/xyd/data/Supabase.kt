@@ -129,6 +129,12 @@ object Supabase {
         authedOk("/rest/v1/categories?select=*,title_categories(title_id,position)&order=sort.asc,created_at.asc")
     }
 
+    /** URL d'images du catalogue au hasard, lisibles sans compte (écran de connexion). */
+    suspend fun publicCovers(limit: Int = 24): List<String> {
+        val arr = org.json.JSONArray(public("/rest/v1/rpc/public_covers?p_limit=$limit"))
+        return (0 until arr.length()).mapNotNull { arr.getJSONObject(it).optString("url").takeIf { u -> u.startsWith("http") } }
+    }
+
     suspend fun fetchAnnouncements(): String = authedOk(
         "/rest/v1/announcements?select=*&published=eq.true"
     )

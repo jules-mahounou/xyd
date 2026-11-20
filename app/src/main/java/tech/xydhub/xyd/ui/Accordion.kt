@@ -78,7 +78,8 @@ private val RADIUS = 14.dp
 fun AccordionRow(titles: List<Title>, onClick: (Title) -> Unit) {
     if (titles.isEmpty()) return
     val n = titles.size
-    var p by remember(n) { mutableFloatStateOf(0f) }
+    // Position gardée quand la rangée sort de l'écran puis revient (défilement vertical de l'accueil).
+    var p by androidx.compose.runtime.saveable.rememberSaveable(n) { mutableFloatStateOf(0f) }
     val scope = rememberCoroutineScope()
     var settle by remember { mutableStateOf<Job?>(null) }
 

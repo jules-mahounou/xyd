@@ -27,6 +27,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -232,10 +233,15 @@ fun AuthSheet() {
         AuroraBand(Modifier.align(Alignment.BottomCenter), height = 150.dp)
         Column(
             Modifier.fillMaxWidth().verticalScroll(rememberScrollState())
-                .padding(horizontal = 24.dp).padding(top = 28.dp, bottom = 24.dp)
-                .navigationBarsPadding().imePadding(),
+                .padding(bottom = 24.dp).navigationBarsPadding().imePadding(),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
+            // En haut : images du catalogue qui défilent en diagonale, entre deux fondus.
+            CoverMarquee()
+            Column(
+                Modifier.fillMaxWidth().padding(horizontal = 24.dp).offset(y = (-34).dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+            ) {
             Logo(56.dp)
             Spacer(Modifier.height(16.dp))
             Text(if (signup) "Créer un compte" else "Connexion", fontSize = 22.sp, fontWeight = FontWeight.SemiBold)
@@ -263,6 +269,7 @@ fun AuthSheet() {
             }
             TextButton(onClick = { signup = !signup; err = null }) {
                 Text(if (signup) "J'ai déjà un compte" else "Pas de compte ? S'inscrire", color = Xyd.Muted)
+            }
             }
         }
         }
@@ -418,23 +425,20 @@ private fun MainAction(p: Playable, d: DownloadItem?, posMs: Long, onPlay: (Stri
             fmtSize(p.sizeBytes).let { if (it.isBlank()) "" else " ($it)" }
     }
     Column {
-        Button(
+        // Liquide = progression (plein = prêt à lire) ; trait lumineux sur le contour = téléchargement actif.
+        SurgeButton(
+            label = label,
             onClick = { primaryAction(p, d, onPlay, download) },
-            modifier = Modifier.fillMaxWidth().height(50.dp),
-            shape = RoundedCornerShape(12.dp),
-            colors = ButtonDefaults.buttonColors(containerColor = Xyd.Grey, contentColor = Xyd.Black),
-        ) {
-            Icon(if (d?.status == DlStatus.DONE) Icons.Filled.PlayArrow else XIcons.Download, null, Modifier.size(20.dp))
-            Spacer(Modifier.width(8.dp))
-            Text(label, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-        }
-        if (d != null && d.status == DlStatus.RUNNING) {
-            LinearProgressIndicator(
-                progress = { d.fraction },
-                modifier = Modifier.fillMaxWidth().padding(top = 8.dp).height(3.dp),
-                color = Xyd.Grey, trackColor = Xyd.Line, drawStopIndicator = {},
-            )
-        }
+            modifier = Modifier.fillMaxWidth(),
+            icon = when (d?.status) {
+                DlStatus.DONE -> Icons.Filled.PlayArrow
+                DlStatus.RUNNING, DlStatus.QUEUED -> XIcons.Pause
+                else -> XIcons.Download
+            },
+            fill = when (d?.status) { DlStatus.DONE -> 1f; DlStatus.RUNNING, DlStatus.PAUSED -> d!!.fraction; else -> 0f },
+            active = d?.status == DlStatus.RUNNING || d?.status == DlStatus.QUEUED,
+            moving = d?.status == DlStatus.RUNNING,
+        )
         d?.takeIf { it.status == DlStatus.FAILED }?.error?.let {
             Text(it, color = Xyd.Danger, fontSize = 12.sp, modifier = Modifier.padding(top = 6.dp))
         }
@@ -516,10 +520,13 @@ fun DownloadsSheet(onPlay: (String) -> Unit, onDismiss: () -> Unit) {
                         "Aujourd'hui : ${fmtDuration((usedMin * 60).toInt()).ifBlank { "0 min" }} / ${fmtDuration((maxMin * 60).toInt())} de vidéo",
                         color = Xyd.Muted, fontSize = 12.sp, modifier = Modifier.padding(horizontal = 20.dp),
                     )
-                    LinearProgressIndicator(
-                        progress = { (usedMin / maxMin).toFloat().coerceIn(0f, 1f) },
+                    if (usedMin >= maxMin) LinearProgressIndicator(
+                        progress = { 1f },
                         modifier = Modifier.padding(horizontal = 20.dp, vertical = 6.dp).fillMaxWidth().height(3.dp),
-                        color = if (usedMin >= maxMin) Xyd.Danger else Xyd.Grey, trackColor = Xyd.Line, drawStopIndicator = {},
+                        color = Xyd.Danger, trackColor = Xyd.Line, drawStopIndicator = {},
+                    ) else SurgeBar(
+                        (usedMin / maxMin).toFloat(), moving = false,
+                        modifier = Modifier.padding(horizontal = 20.dp, vertical = 7.dp), height = 3.dp,
                     )
                 }
             }
@@ -620,11 +627,7 @@ private fun statusText(d: DownloadItem): String = when (d.status) {
 @Composable
 private fun DownloadProgress(d: DownloadItem) {
     if (d.status == DlStatus.RUNNING || d.status == DlStatus.PAUSED) {
-        LinearProgressIndicator(
-            progress = { d.fraction },
-            modifier = Modifier.padding(top = 4.dp).fillMaxWidth().height(2.dp),
-            color = if (d.status == DlStatus.RUNNING) Xyd.Grey else Xyd.Muted, trackColor = Xyd.Line, drawStopIndicator = {},
-        )
+        SurgeBar(d.fraction, moving = d.status == DlStatus.RUNNING, modifier = Modifier.padding(top = 6.dp), height = 3.dp)
     }
 }
 

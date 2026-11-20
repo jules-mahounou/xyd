@@ -501,16 +501,12 @@ private fun HeroInfo(
                 DlStatus.FAILED -> XIcons.Download to "Réessayer"
                 null -> XIcons.Download to "Télécharger"
             }
-            Button(
-                onClick = { onAction(t) },
-                shape = RoundedCornerShape(10.dp),
-                colors = ButtonDefaults.buttonColors(containerColor = Xyd.Grey, contentColor = Xyd.Black),
-                contentPadding = PaddingValues(horizontal = 22.dp, vertical = 10.dp),
-            ) {
-                Icon(icon, null, Modifier.size(20.dp))
-                Spacer(Modifier.width(6.dp))
-                Text(label, fontWeight = FontWeight.SemiBold)
-            }
+            SurgeButton(
+                label = label, onClick = { onAction(t) }, icon = icon, height = 44.dp,
+                fill = when (d?.status) { DlStatus.DONE -> 1f; DlStatus.RUNNING, DlStatus.PAUSED -> d!!.fraction; else -> 0f },
+                active = d?.status == DlStatus.RUNNING || d?.status == DlStatus.QUEUED,
+                moving = d?.status == DlStatus.RUNNING,
+            )
             Button(
                 onClick = { onInfo(t) },
                 shape = RoundedCornerShape(10.dp),
@@ -709,11 +705,7 @@ private fun ResumeCard(p: Playable, prog: Progress, d: DownloadItem?, onClick: (
                 Icon(if (d?.status == DlStatus.DONE) Icons.Filled.PlayArrow else XIcons.Download, null, tint = Xyd.Text)
             }
             if (prog.positionMs > 0) {
-                LinearProgressIndicator(
-                    progress = { prog.fraction },
-                    modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth().height(3.dp),
-                    color = Xyd.Grey, trackColor = Color(0x55FFFFFF), drawStopIndicator = {},
-                )
+                SurgeBar(prog.fraction, moving = false, modifier = Modifier.align(Alignment.BottomCenter), height = 3.dp)
             }
         }
         Row(verticalAlignment = Alignment.CenterVertically) {

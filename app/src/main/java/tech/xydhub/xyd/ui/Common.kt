@@ -28,6 +28,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.composed
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
@@ -102,36 +103,20 @@ fun DownloadButton(p: Playable, onPlay: (String) -> Unit, download: (Playable) -
     val items by Downloads.items.collectAsStateWithLifecycle()
     val d = items[p.mediaId]
     IconButton(onClick = { primaryAction(p, d, onPlay, download) }) {
-        when (d?.status) {
-            DlStatus.DONE -> Box(
-                Modifier.size(34.dp).clip(CircleShape).background(Xyd.Grey),
-                contentAlignment = Alignment.Center,
-            ) { Icon(Icons.Filled.PlayArrow, "Lire", tint = Xyd.Black) }
-
-            DlStatus.RUNNING, DlStatus.QUEUED -> Box(contentAlignment = Alignment.Center) {
-                if (d!!.status == DlStatus.QUEUED || d.fraction == 0f) {
-                    CircularProgressIndicator(Modifier.size(30.dp), strokeWidth = 2.5.dp, color = Xyd.Grey, trackColor = Xyd.Line)
-                } else {
-                    val f = d.fraction
-                    CircularProgressIndicator(
-                        progress = { f }, modifier = Modifier.size(30.dp), strokeWidth = 2.5.dp,
-                        color = Xyd.Grey, trackColor = Xyd.Line,
-                    )
-                }
-                Icon(XIcons.Pause, "Pause", Modifier.size(14.dp), tint = Xyd.Grey)
+        // Rond « Surge » : le liquide monte avec la progression, trait lumineux autour quand c'est actif.
+        val st = d?.status
+        SurgeRing(
+            fill = when (st) { DlStatus.DONE -> 1f; DlStatus.RUNNING, DlStatus.PAUSED -> d!!.fraction; else -> 0f },
+            active = st == DlStatus.RUNNING || st == DlStatus.QUEUED,
+            moving = st == DlStatus.RUNNING,
+        ) {
+            when (st) {
+                DlStatus.DONE -> Icon(Icons.Filled.PlayArrow, "Lire", Modifier.size(18.dp), tint = Color.White)
+                DlStatus.RUNNING, DlStatus.QUEUED -> Icon(XIcons.Pause, "Pause", Modifier.size(14.dp), tint = Color.White)
+                DlStatus.FAILED -> Icon(Icons.Filled.Refresh, "Réessayer", Modifier.size(16.dp), tint = Xyd.Danger)
+                DlStatus.PAUSED -> Icon(XIcons.Download, "Reprendre", Modifier.size(15.dp), tint = Color.White)
+                null -> Icon(XIcons.Download, "Télécharger", Modifier.size(16.dp), tint = Xyd.Grey)
             }
-
-            DlStatus.FAILED -> Icon(Icons.Filled.Refresh, "Réessayer", tint = Xyd.Danger)
-            DlStatus.PAUSED -> Box(contentAlignment = Alignment.Center) {
-                val f = d!!.fraction
-                CircularProgressIndicator(
-                    progress = { f }, modifier = Modifier.size(30.dp), strokeWidth = 2.5.dp,
-                    color = Xyd.Muted, trackColor = Xyd.Line,
-                )
-                Icon(XIcons.Download, "Reprendre", Modifier.size(16.dp), tint = Xyd.Grey)
-            }
-
-            null -> Icon(XIcons.Download, "Télécharger", tint = Xyd.Grey)
         }
     }
 }
