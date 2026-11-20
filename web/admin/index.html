@@ -247,6 +247,9 @@
   .ads { display:grid; grid-template-columns:repeat(auto-fill,minmax(240px,1fr)); gap:14px; }
   .ads .card { margin-top:0; cursor:pointer; padding:12px; transition:border-color .15s; }
   .ads .card:hover, .ads .card.on { border-color:var(--grey); }
+  .ad-ov { position:absolute; inset:0; display:flex; flex-direction:column; padding:6% 7%; font-size:clamp(11px, 3.2cqw, 20px); line-height:1.25; white-space:normal; }
+  .imgbox { container-type:inline-size; }
+  .ad-cta { margin-top:.6em; padding:.35em .9em; border-radius:999px; font-weight:600; font-size:.85em; }
   .adimg { border-radius:10px; background:var(--card2) center/cover no-repeat; border:1px solid var(--line); display:grid; place-items:center; color:var(--muted); font-size:12px; max-height:260px; margin:0 auto; width:100%; }
   .grid3 { display:grid; grid-template-columns:repeat(3,1fr); gap:0 12px; }
   @media (max-width:820px) { .grid3 { grid-template-columns:1fr; } }
@@ -823,7 +826,7 @@ function route() {
   }
 }
 const PAGE_INFO = {
-  annonces: ["Annonces", "Visuels portrait, carré ou paysage, avec lien facultatif, à placer dans les sections."],
+  annonces: ["Annonces", "Image, GIF ou vidéo (portrait, carré, paysage, bandeau), texte et lien facultatifs, à placer dans les sections."],
   requetes: ["Requêtes", "Demandes de séries et films, avis et problèmes envoyés depuis l'app."],
   utilisateurs: ["Utilisateurs", "Comptes, statuts et mail d'inscription."],
   telechargements: ["Téléchargements", "Limitation multicouche et consommation par personne."],
@@ -1973,8 +1976,8 @@ function storageCard() {
 }
 
 // ---------------------------------------------------------------- annonces
-const AD_RATIOS = { portrait: "Portrait 2:3", square: "Carré 1:1", landscape: "Paysage 16:9" };
-const AD_ASPECT = { portrait: "2/3", square: "1/1", landscape: "16/9" };
+const AD_RATIOS = { portrait: "Portrait 2:3", square: "Carré 1:1", landscape: "Paysage 16:9", wide: "Bandeau 4:1" };
+const AD_ASPECT = { portrait: "2/3", square: "1/1", landscape: "16/9", wide: "4/1" };
 const AD_MAX_BYTES = 12 * 1024 * 1024; // même plafond que le bucket « ads »
 const AD_MEDIA = { image: "image", gif: "GIF", video: "vidéo" };
 
@@ -2041,10 +2044,15 @@ function adsCard() {
       link: h("input", { type: "text", value: a.link_url || "", placeholder: "https://… (vide = visuel non cliquable)" }),
       ratio: h("select", {}, ...Object.entries(AD_RATIOS).map(([v, l]) => h("option", { value: v, selected: a.ratio === v }, l))),
       published: h("input", { type: "checkbox", checked: a.published !== false }),
+      // Mise en page du texte sur le média (tout est facultatif).
+      showText: h("input", { type: "checkbox", checked: a.layout?.showText !== false }),
+      cta: h("input", { type: "text", value: a.layout?.cta || "", placeholder: "ex : Améliorer (vide = pas de bouton)" }),
+      position: h("select", {}, ...[["left", "À gauche"], ["center", "Au centre"], ["right", "À droite"]].map(([v, l]) => h("option", { value: v, selected: (a.layout?.position || "left") === v }, l))),
+      theme: h("select", {}, ...[["light", "Clair (voile sombre)"], ["dark", "Sombre (visuel clair)"]].map(([v, l]) => h("option", { value: v, selected: (a.layout?.theme || "light") === v }, l))),
     };
     f.description.value = a.description || "";
     const err = h("div", { class: "err" });
-    const img = h("div", { class: "imgbox", title: "Choisir le média", style: { width: "100%", maxWidth: "420px", overflow: "hidden" } });
+    const img = h("div", { class: "imgbox", title: "Choisir le média", style: { width: "100%", maxWidth: "420px", overflow: "hidden", position: "relative" } });
     const showImg = () => {
       img.style.aspectRatio = AD_ASPECT[f.ratio.value] || "16/9";
       img.style.backgroundImage = a.image_url && a.media_type !== "video" ? `url("${a.image_url}")` : "";
@@ -2057,7 +2065,27 @@ function adsCard() {
       } else if (!a.image_url) {
         img.textContent = "Média " + (AD_RATIOS[f.ratio.value] || "") + "\nimage, GIF ou vidéo MP4 (12 Mo max)\nclique ou glisse un fichier";
       }
+      if (a.image_url) img.append(overlayPreview());
     };
+    // Aperçu du texte tel que l'app l'écrit sur le média (même logique de position / couleur).
+    const overlayPreview = () => {
+      const title = f.title.value.trim(), desc = f.description.value.trim(), cta = f.cta.value.trim();
+      if (!f.showText.checked || !(title || desc || cta)) return "";
+      const tall = f.ratio.value === "portrait" || f.ratio.value === "square";
+      const pos = f.position.value, light = f.theme.value === "light";
+      const ink = light ? "#fff" : "#1b1408";
+      const veil = !light ? "none" : tall ? "linear-gradient(180deg,transparent 35%,rgba(0,0,0,.78))"
+        : pos === "right" ? "linear-gradient(90deg,transparent 35%,rgba(0,0,0,.69))"
+        : pos === "center" ? "linear-gradient(180deg,rgba(0,0,0,.19),rgba(0,0,0,.56))" : "linear-gradient(90deg,rgba(0,0,0,.69),transparent 65%)";
+      const align = pos === "center" ? "center" : pos === "right" ? "flex-end" : "flex-start";
+      return h("div", { class: "ad-ov", style: { background: veil, justifyContent: tall ? "flex-end" : "center", alignItems: align, textAlign: pos === "center" ? "center" : pos === "right" ? "right" : "left", color: ink, pointerEvents: "none" } },
+        h("div", { style: { maxWidth: tall || pos === "center" ? "100%" : "66%", display: "flex", flexDirection: "column", alignItems: align } },
+          title ? h("b", { style: { fontSize: "1.1em" } }, title) : "",
+          desc ? h("span", { style: { opacity: .82, fontSize: ".82em", marginTop: ".2em" } }, desc) : "",
+          cta ? h("span", { class: "ad-cta", style: { background: light ? "#fff" : "#1b1408", color: light ? "#111" : "#fff4dc" } }, cta) : ""));
+    };
+    for (const el of [f.title, f.description, f.cta]) el.addEventListener("input", showImg);
+    for (const el of [f.showText, f.position, f.theme]) el.addEventListener("change", showImg);
     f.ratio.onchange = showImg;
     const setImg = async (file) => {
       if (!file) return;
@@ -2095,7 +2123,8 @@ function adsCard() {
       if (!a.image_url) return (err.textContent = "Ajoute un média (image, GIF ou vidéo).");
       const row = { title: f.title.value.trim(), description: f.description.value.trim(), link_url: link || null,
         ratio: f.ratio.value, image_url: a.image_url, published: f.published.checked,
-        media_type: a.media_type || "image", video_url: a.media_type === "video" ? a.video_url : null };
+        media_type: a.media_type || "image", video_url: a.media_type === "video" ? a.video_url : null,
+        layout: { showText: f.showText.checked, position: f.position.value, theme: f.theme.value, cta: f.cta.value.trim() } };
       save.disabled = true;
       const res = a._new
         ? await sb.from("announcements").insert({ id: a.id, ...row }).select("*").single()
@@ -2132,6 +2161,15 @@ function adsCard() {
           h("label", { style: { marginTop: 0 } }, "Titre (facultatif)"), f.title,
           h("label", {}, "Description (facultatif)"), f.description,
           h("label", {}, "Lien (facultatif)"), f.link,
+          h("label", {}, "Bouton (facultatif)"), f.cta,
+          h("div", { class: "sform" },
+            h("label", { class: "check", style: { display: "flex" } }, f.showText, "Écrire le titre, la description et le bouton sur le média"),
+            h("p", { class: "muted", style: { fontSize: "12px", margin: "4px 0 0" } },
+              "Décoche si le visuel contient déjà son texte : le titre ne sert alors qu'à le retrouver ici. Champs vides = rien d'écrit."),
+            h("div", { class: "grid2" },
+              h("div", {}, h("label", {}, "Position du texte"), f.position),
+              h("div", {}, h("label", {}, "Couleur du texte"), f.theme)),
+          ),
           h("label", { class: "check", style: { display: "flex", marginTop: "14px" } }, f.published, "Visible dans l'app"),
           a._new ? h("p", { class: "muted", style: { fontSize: "12px", marginTop: "12px" } }, "Les sections se choisissent après la création.")
             : h("div", {}, h("label", {}, "Sections"), titleCategoryChips({ id: "a:" + a.id }, "a:" + a.id)),

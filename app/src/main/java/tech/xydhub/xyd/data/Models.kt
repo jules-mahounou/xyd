@@ -37,15 +37,26 @@ data class Announcement(
     val title: String,
     val description: String,
     val image: String?,
-    /** "portrait" (2:3), "square" (1:1) ou "landscape" (16:9). */
+    /** "portrait" (2:3), "square" (1:1), "landscape" (16:9) ou "wide" (bandeau 4:1). */
     val ratio: String,
     val link: String?,
     /** "image", "gif" ou "video". Pour une vidéo, `image` est sa vignette. */
     val mediaType: String = "image",
     val video: String? = null,
+    /** Afficher titre / description / bouton par-dessus le média (false : le visuel contient déjà tout). */
+    val showText: Boolean = true,
+    /** Position du texte : "left", "center" ou "right". */
+    val textPosition: String = "left",
+    /** "light" : texte clair sur voile sombre ; "dark" : texte sombre, sans voile (visuel clair). */
+    val textTheme: String = "light",
+    /** Texte du bouton (vide = pas de bouton ; le visuel reste cliquable s'il y a un lien). */
+    val cta: String = "",
 ) {
     /** Largeur / hauteur du visuel. */
-    val aspect: Float get() = when (ratio) { "portrait" -> 2f / 3f; "square" -> 1f; else -> 16f / 9f }
+    val aspect: Float get() = when (ratio) { "portrait" -> 2f / 3f; "square" -> 1f; "wide" -> 4f; else -> 16f / 9f }
+
+    /** Y a-t-il quelque chose à écrire sur le média ? */
+    val hasOverlay: Boolean get() = showText && (title.isNotBlank() || description.isNotBlank() || cta.isNotBlank())
 
     /** Carte d'une rangée : réutilise les rendus des titres (id préfixé « a: »). */
     fun asTitle() = Title(
@@ -138,7 +149,15 @@ object Parse {
                 link = o.optString("link_url").takeIf { it.startsWith("http://") || it.startsWith("https://") },
                 mediaType = o.optString("media_type", "image").ifBlank { "image" },
                 video = o.optString("video_url").takeIf { it.startsWith("http") },
-            )
+            ).let { a ->
+                val l = o.optJSONObject("layout") ?: return@let a
+                a.copy(
+                    showText = l.optBoolean("showText", true),
+                    textPosition = l.optString("position", "left").ifBlank { "left" },
+                    textTheme = l.optString("theme", "light").ifBlank { "light" },
+                    cta = l.optString("cta"),
+                )
+            }
         }
     }
 

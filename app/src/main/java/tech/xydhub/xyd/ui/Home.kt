@@ -564,14 +564,14 @@ private fun Poster(t: Title, modifier: Modifier, onClick: (Title) -> Unit) {
 @Composable
 private fun AdPoster(t: Title, onClick: (Title) -> Unit) {
     val ad = t.ad ?: return
-    val h = 118.dp * 1.5f
-    Column(Modifier.width(h * ad.aspect).clickable(enabled = ad.link != null) { onClick(t) }) {
-        Box(Modifier.fillMaxWidth().height(h).clip(RoundedCornerShape(10.dp))) {
-            AdMedia(ad, Modifier.fillMaxSize())
-        }
-        if (ad.title.isNotBlank()) {
-            Text(ad.title, Modifier.padding(top = 6.dp), color = Xyd.Text, fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
-        }
+    // Hauteur des affiches ; un format très large (bandeau) est plafonné en largeur et devient plus bas.
+    val w = minOf(118.dp * 1.5f * ad.aspect, 300.dp)
+    Box(
+        Modifier.width(w).aspectRatio(ad.aspect).clip(RoundedCornerShape(10.dp))
+            .clickable(enabled = ad.link != null) { onClick(t) },
+    ) {
+        // Titre / description / bouton éventuels sont écrits sur le média (AdMedia).
+        AdMedia(ad, Modifier.fillMaxSize())
     }
 }
 

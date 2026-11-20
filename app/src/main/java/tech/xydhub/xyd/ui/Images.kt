@@ -112,8 +112,14 @@ object Images {
 }
 
 @Composable
-fun RemoteImage(url: String?, modifier: Modifier = Modifier, contentScale: ContentScale = ContentScale.Crop) {
-    BoxWithConstraints(modifier.background(Xyd.Card)) {
+fun RemoteImage(
+    url: String?,
+    modifier: Modifier = Modifier,
+    contentScale: ContentScale = ContentScale.Crop,
+    /** Fond sous l'image (transparent pour les visuels détourés, ex. bandeau aux bords arrondis). */
+    background: androidx.compose.ui.graphics.Color = Xyd.Card,
+) {
+    BoxWithConstraints(modifier.background(background)) {
         if (url.isNullOrBlank()) return@BoxWithConstraints
         val ctx = LocalContext.current
         // Largeur arrondie au palier de 256 px : pas un décodage par pixel quand la taille varie (animations).
