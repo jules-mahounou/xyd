@@ -130,7 +130,7 @@ object Supabase {
     }
 
     suspend fun fetchAnnouncements(): String = authedOk(
-        "/rest/v1/announcements?select=id,title,description,image_url,ratio,link_url&published=eq.true"
+        "/rest/v1/announcements?select=*&published=eq.true"
     )
 
     /** Statut du compte connecté : "active" ou "blocked" (null si inconnu). */

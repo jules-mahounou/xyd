@@ -40,6 +40,9 @@ data class Announcement(
     /** "portrait" (2:3), "square" (1:1) ou "landscape" (16:9). */
     val ratio: String,
     val link: String?,
+    /** "image", "gif" ou "video". Pour une vidéo, `image` est sa vignette. */
+    val mediaType: String = "image",
+    val video: String? = null,
 ) {
     /** Largeur / hauteur du visuel. */
     val aspect: Float get() = when (ratio) { "portrait" -> 2f / 3f; "square" -> 1f; else -> 16f / 9f }
@@ -133,6 +136,8 @@ object Parse {
                 image = o.optString("image_url").takeIf { it.isNotBlank() && it != "null" },
                 ratio = o.optString("ratio", "landscape"),
                 link = o.optString("link_url").takeIf { it.startsWith("http://") || it.startsWith("https://") },
+                mediaType = o.optString("media_type", "image").ifBlank { "image" },
+                video = o.optString("video_url").takeIf { it.startsWith("http") },
             )
         }
     }

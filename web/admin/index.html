@@ -1975,6 +1975,33 @@ function storageCard() {
 // ---------------------------------------------------------------- annonces
 const AD_RATIOS = { portrait: "Portrait 2:3", square: "Carré 1:1", landscape: "Paysage 16:9" };
 const AD_ASPECT = { portrait: "2/3", square: "1/1", landscape: "16/9" };
+const AD_MAX_BYTES = 12 * 1024 * 1024; // même plafond que le bucket « ads »
+const AD_MEDIA = { image: "image", gif: "GIF", video: "vidéo" };
+
+/** Envoie un GIF / MP4 tel quel dans le bucket public « ads ». */
+async function uploadAdFile(file, id, ext) {
+  const path = `${id}/${ext}-${Date.now()}.${ext}`;
+  const { error } = await sb.storage.from("ads").upload(path, file, { contentType: file.type, upsert: false });
+  if (error) throw error;
+  return sb.storage.from("ads").getPublicUrl(path).data.publicUrl;
+}
+
+/** Vignette JPEG d'une vidéo (image à 0,5 s), affichée par l'app pendant le chargement. */
+function videoThumb(file) {
+  return new Promise((resolve, reject) => {
+    const v = document.createElement("video");
+    const url = URL.createObjectURL(file);
+    v.muted = true; v.preload = "auto"; v.playsInline = true; v.src = url;
+    v.onloadeddata = () => { v.currentTime = Math.min(0.5, (v.duration || 1) / 2); };
+    v.onseeked = () => {
+      const c = document.createElement("canvas");
+      c.width = v.videoWidth; c.height = v.videoHeight;
+      c.getContext("2d").drawImage(v, 0, 0);
+      c.toBlob((b) => { URL.revokeObjectURL(url); b ? resolve(b) : reject(new Error("Vignette impossible")); }, "image/jpeg", 0.85);
+    };
+    v.onerror = () => { URL.revokeObjectURL(url); reject(new Error("Vidéo illisible : utilise un MP4 (H.264)")); };
+  });
+}
 
 /** Annonces : visuel (portrait / carré / paysage), titre, description, lien facultatif, sections. */
 function adsCard() {
@@ -1986,18 +2013,20 @@ function adsCard() {
       h("div", { class: "toolbar" },
         h("span", { class: "count" }, plural(ads.length, "annonce")),
         h("span", { class: "sp" }),
-        h("button", { class: "sm", onclick: () => { editing = { _new: true, id: crypto.randomUUID(), title: "", description: "", image_url: null, ratio: "landscape", link_url: "", published: true }; render(); } }, icon("plus"), "Annonce"),
+        h("button", { class: "sm", onclick: () => { editing = { _new: true, id: crypto.randomUUID(), title: "", description: "", image_url: null, video_url: null, media_type: "image", ratio: "landscape", link_url: "", published: true }; render(); } }, icon("plus"), "Annonce"),
       ),
       editing ? adForm(editing) : "",
       ads.length ? h("div", { class: "ads" }, ...ads.map((a) => {
         const inCats = categories.filter((c) => c.items.includes("a:" + a.id)).map((c) => c.name);
         return h("div", { class: "card ad" + (editing && editing.id === a.id ? " on" : ""), onclick: () => { editing = { ...a }; render(); window.scrollTo({ top: 0, behavior: "smooth" }); } },
-          h("div", { class: "adimg", style: Object.assign({ aspectRatio: AD_ASPECT[a.ratio] || "16/9" }, a.image_url ? { backgroundImage: `url("${a.image_url}")` } : {}) }, a.image_url ? "" : "Pas d'image"),
+          h("div", { class: "adimg", style: Object.assign({ aspectRatio: AD_ASPECT[a.ratio] || "16/9", position: "relative" }, a.image_url ? { backgroundImage: `url("${a.image_url}")` } : {}) },
+            a.image_url ? "" : "Pas de média",
+            a.media_type && a.media_type !== "image" ? h("span", { class: "badge", style: { position: "absolute", top: "8px", left: "8px", background: "rgba(0,0,0,.7)" } }, a.media_type === "video" ? "▶ vidéo" : "GIF") : ""),
           h("div", { class: "row", style: { gap: "6px", marginTop: "10px" } },
             h("b", { style: { flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" } }, a.title || "Sans titre"),
             h("span", { class: "pill " + (a.published ? "ok" : "off") }, a.published ? "visible" : "masquée")),
           h("small", { class: "muted", style: { display: "block", marginTop: "2px" } },
-            [AD_RATIOS[a.ratio], a.link_url ? "lien ✓" : "sans lien"].join(" · ")),
+            [AD_RATIOS[a.ratio], AD_MEDIA[a.media_type || "image"], a.link_url ? "lien ✓" : "sans lien"].join(" · ")),
           h("small", { class: "dim", style: { display: "block", marginTop: "2px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" } },
             inCats.length ? "Sections : " + inCats.join(", ") : "Dans aucune section"),
         );
@@ -2015,19 +2044,45 @@ function adsCard() {
     };
     f.description.value = a.description || "";
     const err = h("div", { class: "err" });
-    const img = h("div", { class: "imgbox", title: "Choisir le visuel", style: { width: "100%", maxWidth: "420px" } });
+    const img = h("div", { class: "imgbox", title: "Choisir le média", style: { width: "100%", maxWidth: "420px", overflow: "hidden" } });
     const showImg = () => {
       img.style.aspectRatio = AD_ASPECT[f.ratio.value] || "16/9";
-      img.style.backgroundImage = a.image_url ? `url("${a.image_url}")` : "";
-      img.textContent = a.image_url ? "" : "Visuel " + (AD_RATIOS[f.ratio.value] || "") + "\nclique ou glisse une image";
+      img.style.backgroundImage = a.image_url && a.media_type !== "video" ? `url("${a.image_url}")` : "";
+      img.replaceChildren();
+      if (a.media_type === "video" && a.video_url) {
+        // Aperçu fidèle : la vidéo tourne en boucle, sans son, recadrée au format choisi.
+        img.append(h("video", { src: a.video_url, poster: a.image_url || null, autoplay: true, muted: true, loop: true, playsinline: true,
+          style: { width: "100%", height: "100%", objectFit: "cover", display: "block" } }));
+        img.querySelector("video").muted = true;
+      } else if (!a.image_url) {
+        img.textContent = "Média " + (AD_RATIOS[f.ratio.value] || "") + "\nimage, GIF ou vidéo MP4 (12 Mo max)\nclique ou glisse un fichier";
+      }
     };
     f.ratio.onchange = showImg;
     const setImg = async (file) => {
-      if (!file || !/^image\//.test(file.type)) return;
-      img.textContent = "Envoi…";
-      try { a.image_url = await uploadImage(file, a.id, "ad"); showImg(); } catch (e) { showImg(); fail(e); }
+      if (!file) return;
+      const isGif = file.type === "image/gif", isVideo = file.type === "video/mp4";
+      if (!isGif && !isVideo && !/^image\//.test(file.type)) return toast("Format non pris en charge : image, GIF ou vidéo MP4", 4000, "e");
+      if ((isGif || isVideo) && file.size > AD_MAX_BYTES) return toast(`Fichier trop lourd (${fmtSize(file.size)}) : 12 Mo maximum`, 5000, "e");
+      if (isVideo) {
+        const d = await probeDuration(file);
+        if (d > 60 && !(await uiConfirm(`Cette vidéo dure ${fmtDur(d)}. Pour une annonce, quelques secondes en boucle suffisent (et chargent plus vite). Continuer quand même ?`, { ok: "Continuer" }))) return;
+      }
+      img.replaceChildren(); img.style.backgroundImage = ""; img.textContent = "Envoi…";
+      try {
+        if (isVideo) {
+          const thumb = await videoThumb(file);
+          const [poster, video] = await Promise.all([uploadImage(thumb, a.id, "ad"), uploadAdFile(file, a.id, "mp4")]);
+          Object.assign(a, { media_type: "video", image_url: poster, video_url: video });
+        } else if (isGif) {
+          Object.assign(a, { media_type: "gif", image_url: await uploadAdFile(file, a.id, "gif"), video_url: null });
+        } else {
+          Object.assign(a, { media_type: "image", image_url: await uploadImage(file, a.id, "ad"), video_url: null });
+        }
+        showImg();
+      } catch (e) { showImg(); fail(e); }
     };
-    img.onclick = async () => setImg((await pickFiles("image/*"))[0]);
+    img.onclick = async () => setImg((await pickFiles("image/*,video/mp4"))[0]);
     img.ondragover = (e) => { e.preventDefault(); img.style.borderColor = "var(--grey)"; };
     img.ondragleave = () => (img.style.borderColor = "");
     img.ondrop = (e) => { e.preventDefault(); img.style.borderColor = ""; setImg(e.dataTransfer.files[0]); };
@@ -2037,9 +2092,10 @@ function adsCard() {
       err.textContent = "";
       const link = f.link.value.trim();
       if (link && !/^https?:\/\/\S+\.\S+/.test(link)) return (err.textContent = "Lien invalide : il doit commencer par https://");
-      if (!a.image_url) return (err.textContent = "Ajoute un visuel.");
+      if (!a.image_url) return (err.textContent = "Ajoute un média (image, GIF ou vidéo).");
       const row = { title: f.title.value.trim(), description: f.description.value.trim(), link_url: link || null,
-        ratio: f.ratio.value, image_url: a.image_url, published: f.published.checked };
+        ratio: f.ratio.value, image_url: a.image_url, published: f.published.checked,
+        media_type: a.media_type || "image", video_url: a.media_type === "video" ? a.video_url : null };
       save.disabled = true;
       const res = a._new
         ? await sb.from("announcements").insert({ id: a.id, ...row }).select("*").single()
@@ -2068,8 +2124,9 @@ function adsCard() {
       h("div", { class: "cols", style: { marginTop: 0 } },
         h("div", {},
           h("label", { style: { marginTop: 0 } }, "Format du visuel"), f.ratio,
-          h("label", {}, "Visuel"), img,
-          h("p", { class: "muted", style: { fontSize: "12px", marginTop: "6px" } }, "Tout le visuel est cliquable dans l'app quand il y a un lien."),
+          h("label", {}, "Média"), img,
+          h("p", { class: "muted", style: { fontSize: "12px", marginTop: "6px" } },
+            "Image, GIF animé ou courte vidéo MP4 (12 Mo max ; jouée en boucle, sans son). Tout le média est cliquable dans l'app quand il y a un lien."),
         ),
         h("div", {},
           h("label", { style: { marginTop: 0 } }, "Titre (facultatif)"), f.title,

@@ -40,6 +40,33 @@ object Images {
 
     fun cached(url: String, w: Int) = memory.get("$url@$w")
 
+    /**
+     * Fichier brut (GIF, vidéo d'annonce) téléchargé une fois dans le cache.
+     * Dossier séparé, plafonné à 60 Mo (les plus anciens partent d'abord).
+     */
+    suspend fun file(ctx: Context, url: String): File? = withContext(io) {
+        runCatching {
+            val dir = File(ctx.cacheDir, "media").apply { mkdirs() }
+            val f = File(dir, hash(url))
+            if (f.exists() && f.length() > 0L) return@runCatching f.also { it.setLastModified(System.currentTimeMillis()) }
+            val c = URL(url).openConnection() as HttpURLConnection
+            try {
+                c.connectTimeout = 15_000
+                c.readTimeout = 30_000
+                if (c.responseCode !in 200..299) return@runCatching null
+                val tmp = File(dir, f.name + ".tmp")
+                c.inputStream.use { i -> tmp.outputStream().use { o -> i.copyTo(o) } }
+                tmp.renameTo(f)
+            } finally {
+                c.disconnect()
+            }
+            val all = dir.listFiles()?.sortedBy { it.lastModified() } ?: emptyList()
+            var total = all.sumOf { it.length() }
+            for (old in all) { if (total <= 60L * 1024 * 1024 || old == f) continue; total -= old.length(); old.delete() }
+            f
+        }.getOrNull()
+    }
+
     suspend fun load(ctx: Context, url: String, targetW: Int): ImageBitmap? {
         val key = "$url@$targetW"
         memory.get(key)?.let { return it }

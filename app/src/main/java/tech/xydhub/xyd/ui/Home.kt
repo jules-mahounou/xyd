@@ -567,7 +567,7 @@ private fun AdPoster(t: Title, onClick: (Title) -> Unit) {
     val h = 118.dp * 1.5f
     Column(Modifier.width(h * ad.aspect).clickable(enabled = ad.link != null) { onClick(t) }) {
         Box(Modifier.fillMaxWidth().height(h).clip(RoundedCornerShape(10.dp))) {
-            RemoteImage(ad.image, Modifier.fillMaxSize())
+            AdMedia(ad, Modifier.fillMaxSize())
         }
         if (ad.title.isNotBlank()) {
             Text(ad.title, Modifier.padding(top = 6.dp), color = Xyd.Text, fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
@@ -591,7 +591,8 @@ private fun BannerRow(titles: List<Title>, onClick: (Title) -> Unit) {
                     Modifier.width(w).aspectRatio(aspect).clip(RoundedCornerShape(14.dp))
                         .then(if (clickable) Modifier.clickable { onClick(t) } else Modifier),
                 ) {
-                    RemoteImage(if (t.ad != null) t.ad.image else (t.backdrop ?: t.poster), Modifier.fillMaxSize())
+                    if (t.ad != null) AdMedia(t.ad, Modifier.fillMaxSize())
+                    else RemoteImage(t.backdrop ?: t.poster, Modifier.fillMaxSize())
                     if (t.ad == null) {
                         Box(Modifier.fillMaxSize().background(androidx.compose.ui.graphics.Brush.verticalGradient(0.55f to Color.Transparent, 1f to Color(0xB3000000))))
                         Text(t.name, Modifier.align(Alignment.BottomStart).padding(14.dp), color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
