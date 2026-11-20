@@ -849,7 +849,8 @@ fun SettingsSheet(onDismiss: () -> Unit) {
     var confirmClear by remember { mutableStateOf(false) }
 
     XSheet(onDismiss) {
-        Column(Modifier.fillMaxWidth().navigationBarsPadding().padding(horizontal = 20.dp).padding(bottom = 24.dp)) {
+        // Défilable : avec la hauteur limitée des modals, « Se déconnecter » doit rester atteignable.
+        Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).navigationBarsPadding().padding(horizontal = 20.dp).padding(bottom = 24.dp)) {
             Text("Réglages", fontSize = 20.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(vertical = 8.dp))
 
             session?.let {
