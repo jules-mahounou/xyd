@@ -522,7 +522,7 @@ function uiForm({ title, text, fields = [], ok = "Valider", danger = false, vali
       close(out);
     } },
       h("h3", {}, title),
-      text ? h("p", { class: "txt" }, text) : "",
+      text ? h("p", { class: "txt", style: { whiteSpace: "pre-line", wordBreak: "break-word" } }, text) : "",
       ...inputs.map(([f, el]) => h("div", {}, f.label ? h("label", {}, f.label) : "", el)),
       fields.length ? err : "",
       h("div", { class: "acts" }, h("button", { type: "button", class: "ghost", onclick: () => close(cancelValue) }, "Annuler"), okBtn),
@@ -1736,27 +1736,42 @@ function downloadsCard() {
  * Les fichiers de moins d'une heure sont ignorés (envoi en cours, fiche pas encore enregistrée).
  */
 async function findOrphans() {
+  // Toutes les lignes, page par page : Supabase plafonne une requête à 1000 lignes,
+  // et une ligne non lue ferait passer son image pour inutilisée.
+  const all = async (table, cols) => {
+    const rows = [];
+    for (let from = 0; ; from += 1000) {
+      const { data, error } = await sb.from(table).select(cols).range(from, from + 999);
+      if (error) throw error;
+      rows.push(...data);
+      if (data.length < 1000) return rows;
+    }
+  };
   const [t, a, v, n] = await Promise.all([
-    sb.from("titles").select("poster_url, backdrop_url"),
-    sb.from("announcements").select("image_url, video_url"),
-    sb.from("app_versions").select("image_url, video_url"),
+    all("titles", "poster_url, backdrop_url"),
+    all("announcements", "image_url, video_url"),
+    all("app_versions", "image_url, video_url"),
     sb.from("app_settings").select("value").eq("key", "next_release").maybeSingle(),
   ]);
-  for (const r of [t, a, v, n]) if (r.error) throw r.error;
-  const used = new Set([
-    ...t.data.flatMap((x) => [x.poster_url, x.backdrop_url]),
-    ...a.data.flatMap((x) => [x.image_url, x.video_url]),
-    ...v.data.flatMap((x) => [x.image_url, x.video_url]),
-    n.data?.value?.image_url, n.data?.value?.video_url,
-  ].map(mediaKey).filter(Boolean));
+  if (n.error) throw n.error;
+  // Toutes les URL citées, quel que soit leur format (domaine, ?paramètres, /render/image/…).
+  const refs = [
+    ...t.flatMap((x) => [x.poster_url, x.backdrop_url]),
+    ...a.flatMap((x) => [x.image_url, x.video_url]),
+    ...v.flatMap((x) => [x.image_url, x.video_url]),
+    JSON.stringify(n.data?.value || {}),
+  ].filter(Boolean).map((u) => { try { return decodeURIComponent(u); } catch { return u; } }).join("\n");
+  // Un fichier est « utilisé » dès que son chemin apparaît quelque part : en cas de doute, on garde.
+  const isUsed = (bucket, path) => refs.includes(`/${bucket}/${path}`) || refs.includes(path);
   const limit = Date.now() - 3600e3;
   const out = [];
   for (const bucket of MEDIA_BUCKETS) {
     const { data: root, error } = await sb.storage.from(bucket).list("", { limit: 1000 });
     if (error) throw error;
-    for (const dir of (root || []).filter((x) => !x.id)) {
+    // « releases » : visuels des versions, aussi lus par les fichiers JSON du FTP → jamais touchés ici.
+    for (const dir of (root || []).filter((x) => !x.id && x.name !== "releases")) {
       for (const f of await listFolder(bucket, dir.name)) {
-        if (used.has(bucket + "/" + f.path)) continue;
+        if (isUsed(bucket, f.path)) continue;
         if (new Date(f.created_at || f.updated_at || 0).getTime() > limit) continue;
         out.push({ bucket, path: f.path, size: f.metadata?.size || 0 });
       }
@@ -1775,7 +1790,9 @@ function mediaCleanCard() {
       const list = await findOrphans();
       if (!list.length) { toast("Aucun média orphelin"); return; }
       const size = list.reduce((s, x) => s + x.size, 0);
-      if (!(await uiConfirm(`${list.length} fichier${list.length > 1 ? "s" : ""} inutilisé${list.length > 1 ? "s" : ""} (${fmtKo(size)}) : images, GIF ou vidéos qui ne sont plus liés à aucun titre, annonce ou version. Les supprimer ?`,
+      const names = list.slice(0, 8).map((x) => "• " + x.bucket + "/" + x.path).join("\n") + (list.length > 8 ? `\n… et ${list.length - 8} autre(s)` : "");
+      console.table(list);
+      if (!(await uiConfirm(`${list.length} fichier${list.length > 1 ? "s" : ""} inutilisé${list.length > 1 ? "s" : ""} (${fmtKo(size)}), liés à aucun titre, annonce ou version :\n\n${names}\n\nLes supprimer ?`,
         { title: "Médias orphelins", ok: "Supprimer", danger: true }))) return;
       for (const bucket of MEDIA_BUCKETS) {
         const paths = list.filter((x) => x.bucket === bucket).map((x) => x.path);
