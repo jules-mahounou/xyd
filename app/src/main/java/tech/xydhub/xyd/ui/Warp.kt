@@ -14,7 +14,9 @@ import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.requiredWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -35,6 +37,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.asComposeRenderEffect
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.platform.LocalDensity
@@ -61,6 +64,58 @@ import kotlin.math.sign
  * Toucher la carte du centre ouvre la fiche, toucher une voisine l'amène au centre.
  */
 
+
+/** Shader AGSL (Android 13+) : courbure « dedans un cylindre », décalage des couleurs, traînée en mouvement. */
+private const val WARP_AGSL = """
+uniform shader content;
+uniform float2 size;
+uniform float view;
+uniform float bend;
+uniform float chroma;
+uniform float smear;
+uniform float3 tint;
+
+half4 main(float2 fc) {
+    float2 c = size * 0.5;
+    float hv = view * 0.5;                 // demi-largeur visible (le calque est plus large que l'écran)
+    float x = (fc.x - c.x) / hv;           // -1 .. 1 sur la partie visible
+    float y = (fc.y - c.y) / c.y;
+    float ax = abs(x);
+    // Bords plus hauts (la carte s'évase) et plus serrés (on voit plus loin sur le cylindre).
+    float sy = 1.0 + bend * 0.62 * ax * ax * ax;
+    float sx = 1.0 + bend * 0.95 * ax * ax;
+    float2 src = float2(c.x + x * sx * hv, c.y + y / sy * c.y);
+    float ca = chroma * ax * ax * sign(x);
+    half4 acc = half4(0.0);
+    for (int i = 0; i < 5; i++) {
+        float2 o = float2((float(i) - 2.0) * 0.5 * smear, 0.0);
+        half4 r = content.eval(src + o + float2(ca, 0.0));
+        half4 g = content.eval(src + o);
+        half4 b = content.eval(src + o - float2(ca, 0.0));
+        acc += half4(r.r, g.g, b.b, max(max(r.a, g.a), b.a));
+    }
+    acc /= 5.0;
+    // Lueur bleue qui monte vers les bords courbés.
+    float edge = smoothstep(0.55, 1.0, ax);
+    acc.rgb += half3(tint) * acc.a * edge * 0.35;
+    return acc;
+}
+"""
+
+@androidx.annotation.RequiresApi(33)
+private class WarpShader {
+    val shader = android.graphics.RuntimeShader(WARP_AGSL)
+    fun effect(w: Float, h: Float, view: Float, smear: Float): androidx.compose.ui.graphics.RenderEffect {
+        shader.setFloatUniform("size", w, h)
+        shader.setFloatUniform("view", view)
+        shader.setFloatUniform("bend", 1f)
+        shader.setFloatUniform("chroma", 7f * (view / 1080f).coerceAtLeast(0.6f) + abs(smear) * 0.25f)
+        shader.setFloatUniform("smear", smear)
+        shader.setFloatUniform("tint", 0.30f, 0.42f, 1.0f)
+        return android.graphics.RenderEffect.createRuntimeShaderEffect(shader, "content").asComposeRenderEffect()
+    }
+}
+
 private val Accent = Color(0xFF4C6BFF)
 private val Cyan = Color(0xFF6FD6FF)
 
@@ -74,10 +129,24 @@ fun WarpCarousel(titles: List<Title>, onClick: (Title) -> Unit) {
 
     BoxWithConstraints(Modifier.fillMaxWidth()) {
         val dens = LocalDensity.current
-        val cardW = (maxWidth * 0.42f).coerceIn(130.dp, 220.dp)
+        val shaded = android.os.Build.VERSION.SDK_INT >= 33
+        val cardW = (maxWidth * (if (shaded) 0.5f else 0.42f)).coerceIn(140.dp, 260.dp)
         val cardH = cardW * 1.45f
         val height = cardH + 44.dp
-        val stepPx = with(dens) { (cardW * 0.9f).toPx() }
+        val stepPx = with(dens) { (cardW * (if (shaded) 1.08f else 0.9f)).toPx() }
+        // Vitesse lissée (px / image) : alimente la traînée du shader pendant le glissement et le calage.
+        var smear by remember { mutableFloatStateOf(0f) }
+        if (shaded) androidx.compose.runtime.LaunchedEffect(stepPx) {
+            var prev = p
+            while (true) {
+                androidx.compose.runtime.withFrameNanos { }
+                val d = (p - prev) * stepPx
+                prev = p
+                val next = smear * 0.55f + (-d).coerceIn(-60f, 60f) * 0.45f
+                smear = if (abs(next) < 0.3f) 0f else next
+            }
+        }
+        val warp = remember { if (shaded) WarpShader() else null }
         val max = (n - 1).toFloat()
 
         fun goTo(target: Float, velocity: Float = 0f) {
@@ -119,15 +188,25 @@ fun WarpCarousel(titles: List<Title>, onClick: (Title) -> Unit) {
                 }
             }
 
-            titles.forEachIndexed { i, t ->
-                val d = i - p
-                if (abs(d) < 3.2f) {
-                    WarpCard(
-                        t, i, n, d,
-                        Modifier.size(cardW, cardH).zIndex(-abs(d)),
-                        onClick = { if (abs(d) < 0.5f) onClick(t) else goTo(i.toFloat()) },
-                        stepPx = stepPx,
-                    )
+            // Les cartes sont posées à plat ; le shader courbe le tout (Android 13+).
+            // Calque 2,2× plus large que l'écran : les bords courbés montrent les cartes plus lointaines.
+            val viewPx = with(dens) { maxWidth.toPx() }
+            Box(
+                Modifier.requiredWidth(if (shaded) maxWidth * 2.2f else maxWidth).fillMaxHeight().graphicsLayer {
+                    if (warp != null) renderEffect = warp.effect(size.width, size.height, viewPx, smear)
+                },
+                contentAlignment = Alignment.Center,
+            ) {
+                titles.forEachIndexed { i, t ->
+                    val d = i - p
+                    if (abs(d) < 3.2f) {
+                        WarpCard(
+                            t, i, n, d,
+                            Modifier.size(cardW, cardH).zIndex(-abs(d)),
+                            onClick = { if (abs(d) < 0.5f) onClick(t) else goTo(i.toFloat()) },
+                            stepPx = stepPx, flat = shaded,
+                        )
+                    }
                 }
             }
         }
@@ -135,12 +214,18 @@ fun WarpCarousel(titles: List<Title>, onClick: (Title) -> Unit) {
 }
 
 @Composable
-private fun WarpCard(t: Title, index: Int, total: Int, d: Float, modifier: Modifier, onClick: () -> Unit, stepPx: Float) {
+private fun WarpCard(t: Title, index: Int, total: Int, d: Float, modifier: Modifier, onClick: () -> Unit, stepPx: Float, flat: Boolean) {
     val ad = abs(d)
     val focus = (1f - ad).coerceIn(0f, 1f) // 1 = au centre
     Box(
         modifier
             .graphicsLayer {
+                if (flat) {
+                    // Bande plate : c'est le shader qui donne la courbure.
+                    translationX = d * stepPx
+                    alpha = (3.2f - ad).coerceIn(0f, 1f)
+                    return@graphicsLayer
+                }
                 // Position sur le cylindre : les voisines se rapprochent un peu en s'éloignant du centre.
                 translationX = d * stepPx * (1f - 0.1f * ad.coerceAtMost(2f))
                 // Tournées vers l'intérieur : le bord extérieur vient vers nous (effet « dedans »).
