@@ -129,6 +129,7 @@ fun WarpCarousel(titles: List<Title>, onClick: (Title) -> Unit) {
 
     BoxWithConstraints(Modifier.fillMaxWidth()) {
         val dens = LocalDensity.current
+        val fullW = maxWidth
         val shaded = android.os.Build.VERSION.SDK_INT >= 33
         val cardW = (maxWidth * (if (shaded) 0.5f else 0.42f)).coerceIn(140.dp, 260.dp)
         val cardH = cardW * 1.45f
@@ -190,9 +191,9 @@ fun WarpCarousel(titles: List<Title>, onClick: (Title) -> Unit) {
 
             // Les cartes sont posées à plat ; le shader courbe le tout (Android 13+).
             // Calque 2,2× plus large que l'écran : les bords courbés montrent les cartes plus lointaines.
-            val viewPx = with(dens) { maxWidth.toPx() }
+            val viewPx = with(dens) { fullW.toPx() }
             Box(
-                Modifier.requiredWidth(if (shaded) maxWidth * 2.2f else maxWidth).fillMaxHeight().graphicsLayer {
+                Modifier.requiredWidth(if (shaded) fullW * 2.2f else fullW).fillMaxHeight().graphicsLayer {
                     if (warp != null) renderEffect = warp.effect(size.width, size.height, viewPx, smear)
                 },
                 contentAlignment = Alignment.Center,
