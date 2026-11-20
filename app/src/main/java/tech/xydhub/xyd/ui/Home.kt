@@ -236,6 +236,7 @@ fun HomeScreen(onPlay: (String) -> Unit) {
                     // Style choisi dans l'admin pour cette section.
                     when {
                         c.cardStyle == "accordion" -> AccordionRow(list) { sheet = it.id }
+                        c.cardStyle == "warp" -> WarpCarousel(list) { sheet = it.id }
                         c.ranked -> RankedRow(list, c.numberPosition) { sheet = it.id }
                         else -> PosterRow(list) { sheet = it.id }
                     }
