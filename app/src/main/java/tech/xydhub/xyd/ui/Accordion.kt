@@ -19,6 +19,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.requiredSize
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
@@ -113,7 +114,7 @@ fun AccordionRow(titles: List<Title>, onClick: (Title) -> Unit) {
                 titles.forEachIndexed { i, t ->
                     val e = expansionOf(i, p)
                     AccordionCard(
-                        t, i, n, e,
+                        t, i, n, e, wide, height,
                         onClick = { if (e > 0.85f) onClick(t) else goTo(i.toFloat().coerceAtMost(max)) },
                     )
                 }
@@ -143,7 +144,7 @@ fun AccordionRow(titles: List<Title>, onClick: (Title) -> Unit) {
 private fun expansionOf(i: Int, p: Float): Float = (1f - abs(i - p)).coerceIn(0f, 1f)
 
 @Composable
-private fun AccordionCard(t: Title, index: Int, total: Int, e: Float, onClick: () -> Unit) {
+private fun AccordionCard(t: Title, index: Int, total: Int, e: Float, wide: Dp, height: Dp, onClick: () -> Unit) {
     val counter = "%02d / %02d".format(index + 1, total)
     val landscape = ((e - 0.45f) / 0.55f).coerceIn(0f, 1f) // apparition progressive des textes horizontaux
     val portrait = (1f - e * 1.8f).coerceIn(0f, 1f)        // titre vertical, disparaît vite à l'élargissement
@@ -154,8 +155,12 @@ private fun AccordionCard(t: Title, index: Int, total: Int, e: Float, onClick: (
             .clickable(onClick = onClick),
     ) {
         // Couverture : affiche (portrait) qui cède la place à l'image 16:9 (paysage).
-        RemoteImage(t.poster ?: t.backdrop, Modifier.fillMaxSize().graphicsLayer { alpha = 1f - e })
-        RemoteImage(t.backdrop ?: t.poster, Modifier.fillMaxSize().graphicsLayer { alpha = e })
+        // Les images gardent une taille fixe (centrées, rognées par la carte) : chargées une fois
+        // en pleine définition, et la carte qui s'élargit les « dévoile » au lieu de les étirer.
+        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+            if (e < 1f) RemoteImage(t.poster ?: t.backdrop, Modifier.requiredSize(height * (2f / 3f), height).graphicsLayer { alpha = 1f - e })
+            if (e > 0f) RemoteImage(t.backdrop ?: t.poster, Modifier.requiredSize(wide, height).graphicsLayer { alpha = e })
+        }
 
         // Voile de verre sombre, bien transparent, en mode portrait.
         Box(Modifier.fillMaxSize().graphicsLayer { alpha = 1f - e }.background(Color(0x66000000)))

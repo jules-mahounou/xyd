@@ -89,9 +89,11 @@ fun RemoteImage(url: String?, modifier: Modifier = Modifier, contentScale: Conte
     BoxWithConstraints(modifier.background(Xyd.Card)) {
         if (url.isNullOrBlank()) return@BoxWithConstraints
         val ctx = LocalContext.current
-        val w = constraints.maxWidth.takeIf { it in 1..4096 } ?: 600
+        // Largeur arrondie au palier de 256 px : pas un décodage par pixel quand la taille varie (animations).
+        val w = constraints.maxWidth.takeIf { it in 1..4096 }?.let { ((it + 255) / 256 * 256).coerceAtMost(4096) } ?: 600
+        // Si la place grandit, on charge la version plus grande (l'ancienne reste affichée en attendant).
         val img by produceState(Images.cached(url, w), url, w) {
-            if (value == null) value = Images.load(ctx, url, w)
+            (Images.cached(url, w) ?: Images.load(ctx, url, w))?.let { value = it }
         }
         img?.let {
             Image(it, null, Modifier.matchParentSize(), contentScale = contentScale)
