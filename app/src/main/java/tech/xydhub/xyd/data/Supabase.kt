@@ -123,7 +123,7 @@ object Supabase {
     )
 
     suspend fun fetchCategories(): String = authedOk(
-        "/rest/v1/categories?select=id,name,ranked,title_categories(title_id,position)&order=sort.asc,created_at.asc"
+        "/rest/v1/categories?select=*,title_categories(title_id,position)&order=sort.asc,created_at.asc"
     )
 
     /** Statut du compte connecté : "active" ou "blocked" (null si inconnu). */

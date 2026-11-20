@@ -99,6 +99,13 @@ private class SvgShape(private val base: () -> Path, private val uw: Float, priv
 private val BackShape = SvgShape({ BACK_PATH }, U_W, U_H)
 private val FrontShape = SvgShape({ FRONT_PATH }, U_W, U_FRONT_H)
 
+/** Forme « face avant de dossier » (onglet en haut), réutilisée par les cartes accordéon. */
+internal val FolderGlassShape: Shape get() = FrontShape
+internal val FolderGlassPath: Path get() = FRONT_PATH
+internal const val FOLDER_GLASS_W = U_W
+internal const val FOLDER_GLASS_H = U_FRONT_H
+internal fun scaledFolderPath(sx: Float, sy: Float): Path = scaled(FRONT_PATH, sx, sy)
+
 /** Même bleu que la traînée de l'accueil. */
 private val Accent = Color(0xFF4C6BFF)
 

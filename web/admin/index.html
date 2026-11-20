@@ -239,6 +239,18 @@
   .cat-titles { margin:10px 0 0 4px; }
   .cat-titles .it { display:flex; align-items:center; gap:8px; padding:4px 0; font-size:14px; }
   .cat-titles .it .rk { width:24px; color:var(--muted); font-weight:700; }
+  .cat-titles .it { border-radius:8px; }
+  .cat-titles .it:hover { background:var(--hover); }
+  .cat-titles .it.dragging { opacity:.4; }
+  .cat-titles .it.over-top { box-shadow:inset 0 2px 0 var(--grey); }
+  .cat-titles .it.over-bottom { box-shadow:inset 0 -2px 0 var(--grey); }
+  .grid3 { display:grid; grid-template-columns:repeat(3,1fr); gap:0 12px; }
+  @media (max-width:820px) { .grid3 { grid-template-columns:1fr; } }
+  .pickbox { position:relative; max-width:420px; }
+  .pick { position:absolute; left:0; right:0; top:calc(100% + 4px); z-index:8; background:var(--card); border:1px solid var(--line2); border-radius:10px; box-shadow:0 14px 40px rgba(0,0,0,.6); overflow:hidden; }
+  .pick:empty { display:none; }
+  .pick-it { all:unset; box-sizing:border-box; width:100%; display:flex; align-items:center; gap:10px; padding:7px 10px; cursor:pointer; font-size:14px; }
+  .pick-it:hover, .pick-it:focus-visible { background:var(--hover); }
   .meter { height:6px; background:var(--line); border-radius:6px; overflow:hidden; margin-top:6px; }
   .meter i { display:block; height:100%; background:var(--grey); border-radius:6px; }
   .meter i.warn { background:var(--warn); }
@@ -663,7 +675,7 @@ async function load() {
     sb.from("profiles").select("*").order("created_at", { ascending: false }),
     sb.from("user_requests").select("*").order("created_at", { ascending: false }).limit(300),
     sb.from("app_settings").select("value").eq("key", "signup").maybeSingle(),
-    sb.from("categories").select("id, name, sort, ranked, title_categories(title_id, position)").order("sort").order("created_at"),
+    sb.from("categories").select("*, title_categories(title_id, position)").order("sort").order("created_at"),
   ]);
 
   if (tq.error) throw tq.error;
@@ -694,7 +706,7 @@ async function load() {
 
   catsAvailable = !cats.error;
   categories = (cats.data || []).map((c) => ({
-    id: c.id, name: c.name, sort: c.sort, ranked: c.ranked,
+    id: c.id, name: c.name, sort: c.sort, ranked: c.ranked, style: c.style || {}, hasStyle: "style" in c,
     items: (c.title_categories || []).sort((a, b) => a.position - b.position).map((x) => x.title_id),
   }));
 }
@@ -1949,10 +1961,12 @@ async function setCategoryTitles(c, ids) {
   c.items = ids;
 }
 
+/** Ajout : le dernier titre ajouté passe en premier dans la section (comme dans l'app). */
 async function addToCategory(c, titleId) {
-  const { error } = await sb.from("title_categories").insert({ category_id: c.id, title_id: titleId, position: c.items.length + 1 });
+  const { error } = await sb.from("title_categories").insert({ category_id: c.id, title_id: titleId, position: 0 });
   if (error) throw error;
-  c.items = [...c.items, titleId];
+  c.items = [titleId, ...c.items];
+  await setCategoryTitles(c, c.items); // renumérote 1, 2, 3… avec le nouveau en tête
 }
 
 async function removeFromCategory(c, titleId) {
@@ -2000,7 +2014,7 @@ function categoriesCard() {
     const sort = Math.max(0, ...categories.map((c) => c.sort)) + 1;
     const { data, error } = await sb.from("categories").insert({ name: name.trim(), sort }).select("*").single();
     if (error) return fail(error);
-    categories.push({ id: data.id, name: data.name, sort: data.sort, ranked: data.ranked, items: [] });
+    categories.push({ id: data.id, name: data.name, sort: data.sort, ranked: data.ranked, style: data.style || {}, hasStyle: "style" in data, items: [] });
     openCats.add(data.id);
     render();
   }
@@ -2050,27 +2064,104 @@ function categoriesCard() {
     return block;
   }
 
-  function catTitles(c) {
-    const others = titles.filter((t) => !c.items.includes(t.id));
-    const select = h("select", { style: { maxWidth: "340px" } },
-      h("option", { value: "" }, others.length ? "+ Ajouter un titre…" : "Tous les titres sont déjà dedans"),
-      ...others.map((t) => h("option", { value: t.id }, `${t.name} (${t.kind === "film" ? "film" : "série"})`)),
-    );
-    select.onchange = async () => {
-      if (!select.value) return;
-      try { await addToCategory(c, select.value); render(); } catch (e) { fail(e); }
+  // Styles disponibles (le JSON categories.style accepte d'autres clés plus tard sans migration).
+  const CARD_STYLES = [["poster", "Affiches (classique)"], ["accordion", "Accordéon paysage"]];
+  const SECTION_STYLES = [["row", "Rangée horizontale"]];
+  const NUMBER_POSITIONS = [["bottom-start", "En bas à gauche"], ["top-start", "En haut à gauche"], ["bottom-end", "En bas à droite"], ["top-end", "En haut à droite"]];
+
+  async function saveStyle(c, patch) {
+    const style = { ...(c.style || {}), ...patch };
+    const { error } = await sb.from("categories").update({ style }).eq("id", c.id);
+    if (error) return fail(error);
+    c.style = style;
+    toast("Style enregistré");
+    render();
+  }
+
+  function styleBox(c) {
+    if (!c.hasStyle) return h("p", { class: "muted", style: { fontSize: "12px", margin: "4px 0 10px" } },
+      "Styles indisponibles : la migration « category_styles » n'est pas encore appliquée (workflow Backend).");
+    const sel = (opts, value, onchange, disabled) => {
+      const el = h("select", { disabled }, ...opts.map(([v, l]) => h("option", { value: v, selected: v === value }, l)));
+      el.onchange = () => onchange(el.value);
+      return el;
     };
+    const st = c.style || {};
+    const card = st.card || "poster";
+    const numberOk = c.ranked && card === "poster";
+    return h("div", { class: "grid3", style: { marginBottom: "12px" } },
+      h("div", {}, h("label", { style: { marginTop: 0 } }, "Style de section"), sel(SECTION_STYLES, st.section || "row", (v) => saveStyle(c, { section: v }))),
+      h("div", {}, h("label", { style: { marginTop: 0 } }, "Style des cartes"), sel(CARD_STYLES, card, (v) => saveStyle(c, { card: v }))),
+      h("div", { title: numberOk ? "" : "Actif avec « Classement » coché et le style « Affiches »" },
+        h("label", { style: { marginTop: 0 } }, "Numérotation"),
+        sel(NUMBER_POSITIONS, st.number?.position || "bottom-start", (v) => saveStyle(c, { number: { ...(st.number || {}), position: v } }), !numberOk)),
+    );
+  }
+
+  function catTitles(c) {
     const items = c.items.map(titleById).filter(Boolean);
-    return h("div", { class: "cat-titles sform" },
-      ...items.map((t, j) => h("div", { class: "it" },
+    // Ajout par recherche (au lieu d'une longue liste déroulante).
+    const q = h("input", { type: "search", placeholder: "Ajouter un titre : tape son nom…", autocomplete: "off" });
+    const results = h("div", { class: "pick" });
+    const showResults = () => {
+      const nq = norm(q.value).trim();
+      const others = titles.filter((t) => !c.items.includes(t.id) && (!nq || norm(t.name).includes(nq))).slice(0, 8);
+      results.replaceChildren(...(nq || document.activeElement === q ? others : []).map((t) => h("button", { type: "button", class: "pick-it", onmousedown: (e) => e.preventDefault(), onclick: async () => {
+        try { await addToCategory(c, t.id); toast(`« ${t.name} » ajouté en premier`); render(); } catch (e) { fail(e); }
+      } },
+        h("div", { class: "thumb", style: Object.assign({ width: "22px" }, t.poster_url ? { backgroundImage: `url("${t.poster_url}")` } : {}) }),
+        h("span", { style: { flex: 1 } }, t.name), h("span", { class: "muted", style: { fontSize: "12px" } }, t.kind === "film" ? "film" : "série"))));
+      if (nq && !others.length) results.replaceChildren(h("div", { class: "muted", style: { padding: "8px", fontSize: "13px" } }, "Aucun titre trouvé (ou déjà dans la section)."));
+    };
+    q.oninput = showResults; q.onfocus = showResults;
+    q.onblur = () => setTimeout(() => results.replaceChildren(), 150);
+    q.onkeydown = (e) => { if (e.key === "Enter") { e.preventDefault(); results.querySelector(".pick-it")?.click(); } };
+
+    // Réordonner : glisser la poignée ⋮⋮ (un seul enregistrement à la fin), ou « en premier ».
+    let dragged = null;
+    const move = async (from, to) => {
+      if (from === to) return;
+      try { await setCategoryTitles(c, moveIn(c.items, from, to)); render(); } catch (e) { fail(e); }
+    };
+    const list = h("div", {}, ...items.map((t, j) => {
+      const idx = c.items.indexOf(t.id);
+      const handle = h("span", { class: "handle", title: "Glisser pour déplacer" }, "⋮⋮");
+      const row = h("div", { class: "it" },
+        handle,
         h("span", { class: "rk" }, c.ranked ? `${j + 1}` : "•"),
         h("div", { class: "thumb", style: Object.assign({ width: "24px" }, t.poster_url ? { backgroundImage: `url("${t.poster_url}")` } : {}) }),
         h("span", { style: { flex: 1 } }, t.name, " ", h("span", { class: "muted", style: { fontSize: "12px" } }, t.kind === "film" ? "film" : "série")),
-        h("button", { class: "arrow", disabled: j === 0, onclick: async () => { try { await setCategoryTitles(c, moveIn(c.items, c.items.indexOf(t.id), c.items.indexOf(t.id) - 1)); render(); } catch (e) { fail(e); } } }, "↑"),
-        h("button", { class: "arrow", disabled: j === items.length - 1, onclick: async () => { try { await setCategoryTitles(c, moveIn(c.items, c.items.indexOf(t.id), c.items.indexOf(t.id) + 1)); render(); } catch (e) { fail(e); } } }, "↓"),
-        h("button", { class: "arrow", title: "Retirer de la catégorie", onclick: async () => { try { await removeFromCategory(c, t.id); render(); } catch (e) { fail(e); } } }, "✕"),
-      )),
-      h("div", { style: { marginTop: "8px" } }, select),
+        h("button", { class: "arrow", title: "Mettre en premier", disabled: j === 0, onclick: () => move(idx, 0) }, "⤒"),
+        h("button", { class: "arrow", title: "Monter", disabled: j === 0, onclick: () => move(idx, idx - 1) }, "↑"),
+        h("button", { class: "arrow", title: "Descendre", disabled: j === items.length - 1, onclick: () => move(idx, idx + 1) }, "↓"),
+        h("button", { class: "arrow", title: "Retirer de la section", onclick: async () => {
+          if (!(await uiConfirm(`Retirer « ${t.name} » de « ${c.name} » ? Le titre n'est pas supprimé.`, { ok: "Retirer" }))) return;
+          try { await removeFromCategory(c, t.id); render(); } catch (e) { fail(e); }
+        } }, "✕"),
+      );
+      handle.onmousedown = () => (row.draggable = true);
+      row.onmouseup = () => (row.draggable = false);
+      row.ondragstart = (ev) => { dragged = idx; row.classList.add("dragging"); ev.dataTransfer.effectAllowed = "move"; ev.dataTransfer.setData("text/plain", t.id); };
+      row.ondragend = () => { row.draggable = false; row.classList.remove("dragging"); dragged = null; };
+      const side = (ev) => { const r = row.getBoundingClientRect(); return ev.clientY < r.top + r.height / 2 ? "top" : "bottom"; };
+      row.ondragover = (ev) => { if (dragged === null || dragged === idx) return; ev.preventDefault(); row.classList.toggle("over-top", side(ev) === "top"); row.classList.toggle("over-bottom", side(ev) === "bottom"); };
+      row.ondragleave = () => row.classList.remove("over-top", "over-bottom");
+      row.ondrop = (ev) => {
+        ev.preventDefault(); row.classList.remove("over-top", "over-bottom");
+        if (dragged === null || dragged === idx) return;
+        let to = idx + (side(ev) === "bottom" ? 1 : 0);
+        if (dragged < to) to--;
+        move(dragged, to);
+      };
+      return row;
+    }));
+
+    return h("div", { class: "cat-titles sform" },
+      styleBox(c),
+      h("div", { class: "pickbox" }, q, results),
+      h("p", { class: "muted", style: { fontSize: "12px", margin: "8px 0 4px" } },
+        "Un titre ajouté arrive en premier dans l'app. Glisse ⋮⋮ pour réordonner, ou ⤒ pour le mettre en tête."),
+      items.length ? list : h("div", { class: "muted", style: { padding: "10px 0", fontSize: "13px" } }, "Aucun titre dans cette section."),
     );
   }
 

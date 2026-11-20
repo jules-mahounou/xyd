@@ -233,7 +233,12 @@ fun HomeScreen(onPlay: (String) -> Unit) {
             rows.forEach { (c, list) ->
                 item(key = "cat-" + c.id) { SectionTitle(c.name) }
                 item(key = "row-" + c.id) {
-                    if (c.ranked) RankedRow(list) { sheet = it.id } else PosterRow(list) { sheet = it.id }
+                    // Style choisi dans l'admin pour cette section.
+                    when {
+                        c.cardStyle == "accordion" -> AccordionRow(list) { sheet = it.id }
+                        c.ranked -> RankedRow(list, c.numberPosition) { sheet = it.id }
+                        else -> PosterRow(list) { sheet = it.id }
+                    }
                 }
             }
 
@@ -582,20 +587,30 @@ private fun androidx.compose.foundation.lazy.LazyListScope.posterGrid(titles: Li
 
 /** Rangée « classement » : grand numéro à gauche de l'affiche (Top 10). */
 @Composable
-private fun RankedRow(titles: List<Title>, onClick: (Title) -> Unit) {
+private fun RankedRow(titles: List<Title>, numberPosition: String = "bottom-start", onClick: (Title) -> Unit) {
+    // Numéro : en haut ou en bas, à gauche ou à droite de l'affiche (réglé dans l'admin).
+    val top = numberPosition.startsWith("top")
+    val end = numberPosition.endsWith("end")
     val flip = rememberFlipState()
     LazyRow(contentPadding = PaddingValues(horizontal = 12.dp), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
         itemsIndexed(titles, key = { _, t -> t.id }) { i, t ->
             Box(Modifier.zIndex(if (flip.value == t.id) 1f else 0f).width(if (i + 1 >= 10) 186.dp else 160.dp).then(if (t.isFilm) Modifier.clickable { onClick(t) } else Modifier.flipGestures(t, flip, onClick))) {
                 Text(
                     "${i + 1}",
-                    Modifier.align(Alignment.BottomStart).offset(y = 18.dp),
+                    Modifier.align(
+                        when {
+                            top && end -> Alignment.TopEnd
+                            top -> Alignment.TopStart
+                            end -> Alignment.BottomEnd
+                            else -> Alignment.BottomStart
+                        },
+                    ).offset(y = if (top) (-22).dp else 18.dp),
                     color = Color(0xFF3A3A3A), fontSize = 112.sp, fontWeight = FontWeight.Black,
                     letterSpacing = (-6).sp, maxLines = 1, softWrap = false,
                 )
                 if (!t.isFilm) {
-                    FlipSeriesPoster(t, flip.value == t.id, onOpen = { flip.value = null; onClick(t) }, Modifier.align(Alignment.CenterEnd).width(110.dp))
-                } else Box(Modifier.align(Alignment.CenterEnd).width(110.dp).aspectRatio(2f / 3f).clip(RoundedCornerShape(10.dp))) {
+                    FlipSeriesPoster(t, flip.value == t.id, onOpen = { flip.value = null; onClick(t) }, Modifier.align(if (end) Alignment.CenterStart else Alignment.CenterEnd).width(110.dp))
+                } else Box(Modifier.align(if (end) Alignment.CenterStart else Alignment.CenterEnd).width(110.dp).aspectRatio(2f / 3f).clip(RoundedCornerShape(10.dp))) {
                     RemoteImage(t.poster ?: t.backdrop, Modifier.fillMaxSize())
                     if (t.poster == null && t.backdrop == null) {
                         Text(t.name, Modifier.align(Alignment.Center).padding(8.dp), color = Xyd.Grey, fontWeight = FontWeight.SemiBold)

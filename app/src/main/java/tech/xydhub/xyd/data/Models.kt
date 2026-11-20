@@ -30,7 +30,18 @@ data class Title(
 )
 
 /** Rangée de l'accueil définie dans l'admin (Top 10, Anime…). `titleIds` déjà triés. */
-data class Category(val id: String, val name: String, val ranked: Boolean, val titleIds: List<String>)
+data class Category(
+    val id: String,
+    val name: String,
+    val ranked: Boolean,
+    val titleIds: List<String>,
+    /** Style des cartes choisi dans l'admin : "poster" (affiches) ou "accordion" (accordéon paysage). */
+    val cardStyle: String = "poster",
+    /** Style de section (pour l'instant "row" : rangée horizontale). */
+    val sectionStyle: String = "row",
+    /** Position des grands numéros d'une section classée : bottom-start, top-start, bottom-end, top-end. */
+    val numberPosition: String = "bottom-start",
+)
 
 /** Un élément lisible : un film, ou un épisode d'une série. `mediaId` = id du film ou de l'épisode. */
 data class Playable(val title: Title, val season: Season?, val episode: Episode?) {
@@ -90,7 +101,11 @@ object Parse {
         return (0 until arr.length()).map { i ->
             val o = arr.getJSONObject(i)
             val links = o.optJSONArray("title_categories") ?: JSONArray()
+            val style = o.optJSONObject("style")
             Category(
+                cardStyle = style?.optString("card")?.takeIf { it.isNotBlank() } ?: "poster",
+                sectionStyle = style?.optString("section")?.takeIf { it.isNotBlank() } ?: "row",
+                numberPosition = style?.optJSONObject("number")?.optString("position")?.takeIf { it.isNotBlank() } ?: "bottom-start",
                 id = o.getString("id"),
                 name = o.optString("name"),
                 ranked = o.optBoolean("ranked"),

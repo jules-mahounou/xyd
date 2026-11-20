@@ -48,7 +48,7 @@ fun FlipSeriesPoster(t: Title, flipped: Boolean, onOpen: () -> Unit, modifier: M
         label = "flip",
     )
     // Retournée : la carte grandit un peu avec un rebond et passe au-dessus de ses voisines.
-    // 1,1× reste dans la marge de dessin des rangées (pas de rognage) et garde les voisines visibles.
+    // 1,17× : nettement plus lisible, reste dans la marge de dessin des rangées et garde les voisines visibles.
     val lift by animateFloatAsState(
         if (flipped) 1f else 0f,
         spring(dampingRatio = 0.5f, stiffness = 320f),
@@ -61,9 +61,9 @@ fun FlipSeriesPoster(t: Title, flipped: Boolean, onOpen: () -> Unit, modifier: M
             .graphicsLayer {
                 rotationY = rot
                 cameraDistance = 10f * density
-                scaleX = 1f + 0.1f * lift
-                scaleY = 1f + 0.1f * lift
-                translationY = -6.dp.toPx() * lift
+                scaleX = 1f + 0.17f * lift
+                scaleY = 1f + 0.17f * lift
+                translationY = -9.dp.toPx() * lift
                 shadowElevation = 18.dp.toPx() * lift.coerceIn(0f, 1f)
                 shape = RoundedCornerShape(10.dp)
                 clip = true
