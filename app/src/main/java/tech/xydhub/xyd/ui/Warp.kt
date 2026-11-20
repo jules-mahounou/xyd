@@ -59,7 +59,7 @@ import kotlin.math.sign
  *
  * La carte du centre est à plat, face à l'écran ; les voisines pivotent vers
  * l'intérieur comme collées à l'intérieur d'un cylindre (leur bord extérieur
- * paraît plus grand). Un filet de lumière bleue souligne le haut et le bas.
+ * paraît plus grand).
  * Glisser fait tourner le cylindre ; lâché, il se cale sur la carte la plus proche.
  * Toucher la carte du centre ouvre la fiche, toucher une voisine l'amène au centre.
  */
@@ -117,7 +117,6 @@ private class WarpShader {
 }
 
 private val Accent = Color(0xFF4C6BFF)
-private val Cyan = Color(0xFF6FD6FF)
 
 @Composable
 fun WarpCarousel(titles: List<Title>, onClick: (Title) -> Unit) {
@@ -135,7 +134,9 @@ fun WarpCarousel(titles: List<Title>, onClick: (Title) -> Unit) {
         val shaded = warp != null
         val cardW = (maxWidth * (if (shaded) 0.5f else 0.42f)).coerceIn(140.dp, 260.dp)
         val cardH = cardW * 1.45f
-        val height = cardH + 44.dp
+        // Les bords courbés grandissent jusqu'à ~1,6× : on réserve cette hauteur + une marge,
+        // pour que le carrousel ne déborde ni sur le titre de la section ni sur la section suivante.
+        val height = if (shaded) cardH * 1.62f + 36.dp else cardH + 44.dp
         val stepPx = with(dens) { (cardW * (if (shaded) 1.08f else 0.9f)).toPx() }
         // Vitesse lissée (px / image) : alimente la traînée du shader pendant le glissement et le calage.
         var smear by remember { mutableFloatStateOf(0f) }
@@ -171,24 +172,6 @@ fun WarpCarousel(titles: List<Title>, onClick: (Title) -> Unit) {
             ),
             contentAlignment = Alignment.Center,
         ) {
-            // Filets de lumière en arc, en haut et en bas (le bord du cylindre).
-            Canvas(Modifier.fillMaxSize()) {
-                val w = size.width
-                val glow = Brush.horizontalGradient(
-                    0f to Color.Transparent, 0.3f to Cyan.copy(alpha = 0.55f), 0.5f to Accent.copy(alpha = 0.9f),
-                    0.7f to Cyan.copy(alpha = 0.55f), 1f to Color.Transparent,
-                )
-                val bow = 14.dp.toPx()
-                fun arc(y: Float, dir: Float) = Path().apply {
-                    moveTo(0f, y + dir * bow)
-                    quadraticTo(w / 2f, y - dir * bow, w, y + dir * bow)
-                }
-                val top = 8.dp.toPx(); val bottom = size.height - 8.dp.toPx()
-                for ((y, dir) in listOf(top to 1f, bottom to -1f)) {
-                    drawPath(arc(y, dir), glow, style = Stroke(6.dp.toPx(), cap = StrokeCap.Round), alpha = 0.18f)
-                    drawPath(arc(y, dir), glow, style = Stroke(1.5.dp.toPx(), cap = StrokeCap.Round))
-                }
-            }
 
             // Les cartes sont posées à plat ; le shader courbe le tout (Android 13+).
             // Calque 2,2× plus large que l'écran : les bords courbés montrent les cartes plus lointaines.
