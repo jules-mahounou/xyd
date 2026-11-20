@@ -25,6 +25,9 @@ import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.zIndex
+import androidx.compose.ui.text.PlatformTextStyle
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -44,14 +47,27 @@ fun FlipSeriesPoster(t: Title, flipped: Boolean, onOpen: () -> Unit, modifier: M
         spring(dampingRatio = 0.72f, stiffness = 170f),
         label = "flip",
     )
+    // Retournée : la carte grandit un peu avec un rebond et passe au-dessus de ses voisines.
+    // 1,1× reste dans la marge de dessin des rangées (pas de rognage) et garde les voisines visibles.
+    val lift by animateFloatAsState(
+        if (flipped) 1f else 0f,
+        spring(dampingRatio = 0.5f, stiffness = 320f),
+        label = "lift",
+    )
     Box(
         modifier
+            .zIndex(if (flipped || lift > 0.01f) 1f else 0f)
             .aspectRatio(2f / 3f)
             .graphicsLayer {
                 rotationY = rot
                 cameraDistance = 10f * density
-            }
-            .clip(RoundedCornerShape(10.dp)),
+                scaleX = 1f + 0.1f * lift
+                scaleY = 1f + 0.1f * lift
+                translationY = -6.dp.toPx() * lift
+                shadowElevation = 18.dp.toPx() * lift.coerceIn(0f, 1f)
+                shape = RoundedCornerShape(10.dp)
+                clip = true
+            },
     ) {
         if (rot <= 90f) {
             RemoteImage(t.poster ?: t.backdrop, Modifier.fillMaxSize())
@@ -75,13 +91,13 @@ private fun SeriesBack(t: Title, onOpen: () -> Unit) {
         Box(
             Modifier.fillMaxSize().border(1.dp, Color.White.copy(alpha = 0.12f), RoundedCornerShape(10.dp)),
         )
-        Column(Modifier.fillMaxSize().padding(7.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+        Column(Modifier.fillMaxSize().padding(6.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(3.dp)) {
                 Stat("${t.seasons.size}", if (t.seasons.size > 1) "saisons" else "saison", Modifier.weight(1f))
                 Stat("$episodes", "ép.", Modifier.weight(1f))
                 Stat(if (t.year > 0) "${t.year}".takeLast(4) else "—", "année", Modifier.weight(1f))
             }
-            Spacer(Modifier.height(8.dp))
+            Spacer(Modifier.height(6.dp))
             Text(
                 t.name, color = Xyd.Text, fontSize = 12.sp, fontWeight = FontWeight.SemiBold, lineHeight = 14.sp,
                 maxLines = 2, overflow = TextOverflow.Ellipsis, textAlign = TextAlign.Center,
@@ -104,11 +120,13 @@ private fun SeriesBack(t: Title, onOpen: () -> Unit) {
 
 @Composable
 private fun Stat(value: String, label: String, modifier: Modifier) {
+    // Compact : pas de marge de police, interligne = taille du texte, chiffre et libellé collés.
+    val tight = TextStyle(platformStyle = PlatformTextStyle(includeFontPadding = false))
     Column(
-        modifier.clip(RoundedCornerShape(7.dp)).background(Color.White.copy(alpha = 0.08f)).padding(vertical = 5.dp),
+        modifier.clip(RoundedCornerShape(6.dp)).background(Color.White.copy(alpha = 0.08f)).padding(vertical = 3.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        Text(value, color = Xyd.Text, fontSize = 12.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
-        Text(label, color = Xyd.Muted, fontSize = 8.sp, maxLines = 1)
+        Text(value, color = Xyd.Text, fontSize = 12.sp, lineHeight = 12.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, style = tight)
+        Text(label, color = Xyd.Muted, fontSize = 8.sp, lineHeight = 8.sp, maxLines = 1, style = tight)
     }
 }

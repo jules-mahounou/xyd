@@ -60,6 +60,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.composed
+import androidx.compose.ui.zIndex
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -539,7 +540,7 @@ private fun PosterRow(titles: List<Title>, onClick: (Title) -> Unit) {
     LazyRow(contentPadding = PaddingValues(horizontal = 20.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
         items(titles, key = { it.id }) { t ->
             if (t.isFilm) Poster(t, Modifier.width(118.dp), onClick)
-            else Column(Modifier.width(118.dp).flipGestures(t, flip, onClick)) {
+            else Column(Modifier.zIndex(if (flip.value == t.id) 1f else 0f).width(118.dp).flipGestures(t, flip, onClick)) {
                 FlipSeriesPoster(t, flip.value == t.id, onOpen = { flip.value = null; onClick(t) }, Modifier.fillMaxWidth())
                 Text(t.name, Modifier.padding(top = 6.dp), color = Xyd.Text, fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
@@ -585,7 +586,7 @@ private fun RankedRow(titles: List<Title>, onClick: (Title) -> Unit) {
     val flip = rememberFlipState()
     LazyRow(contentPadding = PaddingValues(horizontal = 12.dp), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
         itemsIndexed(titles, key = { _, t -> t.id }) { i, t ->
-            Box(Modifier.width(if (i + 1 >= 10) 186.dp else 160.dp).then(if (t.isFilm) Modifier.clickable { onClick(t) } else Modifier.flipGestures(t, flip, onClick))) {
+            Box(Modifier.zIndex(if (flip.value == t.id) 1f else 0f).width(if (i + 1 >= 10) 186.dp else 160.dp).then(if (t.isFilm) Modifier.clickable { onClick(t) } else Modifier.flipGestures(t, flip, onClick))) {
                 Text(
                     "${i + 1}",
                     Modifier.align(Alignment.BottomStart).offset(y = 18.dp),
