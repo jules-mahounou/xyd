@@ -130,7 +130,9 @@ fun WarpCarousel(titles: List<Title>, onClick: (Title) -> Unit) {
     BoxWithConstraints(Modifier.fillMaxWidth()) {
         val dens = LocalDensity.current
         val fullW = maxWidth
-        val shaded = android.os.Build.VERSION.SDK_INT >= 33
+        // Shader compilé une fois ; s'il échoue (pilote graphique), on retombe sur la version 3D.
+        val warp = remember { if (android.os.Build.VERSION.SDK_INT >= 33) runCatching { WarpShader() }.getOrNull() else null }
+        val shaded = warp != null
         val cardW = (maxWidth * (if (shaded) 0.5f else 0.42f)).coerceIn(140.dp, 260.dp)
         val cardH = cardW * 1.45f
         val height = cardH + 44.dp
@@ -147,7 +149,6 @@ fun WarpCarousel(titles: List<Title>, onClick: (Title) -> Unit) {
                 smear = if (abs(next) < 0.3f) 0f else next
             }
         }
-        val warp = remember { if (shaded) WarpShader() else null }
         val max = (n - 1).toFloat()
 
         fun goTo(target: Float, velocity: Float = 0f) {
