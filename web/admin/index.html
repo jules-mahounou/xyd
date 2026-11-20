@@ -8,115 +8,295 @@
 <meta name="theme-color" content="#000000">
 <link rel="icon" href="../logo.svg" type="image/svg+xml">
 <style>
-  :root { --bg:#000; --grey:#c6c6c6; --text:#ededed; --muted:#8c8c8c; --card:#0f0f0f; --card2:#161616; --line:#262626; --danger:#e5484d; --ok:#46a758; }
+  :root {
+    --bg:#000; --side:#070707; --grey:#c6c6c6; --text:#ededed; --muted:#8c8c8c; --dim:#5c5c5c;
+    --card:#0c0c0c; --card2:#141414; --hover:#1a1a1a; --line:#222; --line2:#2e2e2e;
+    --danger:#e5484d; --ok:#46a758; --warn:#f5a524; --info:#5b9cf5;
+    --r:12px; --sidew:236px;
+  }
   * { box-sizing:border-box; margin:0; padding:0; }
   html,body { background:var(--bg); color:var(--text); }
-  body { font:15px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif; -webkit-font-smoothing:antialiased; padding-bottom:120px; }
-  .wrap { max-width:960px; margin:0 auto; padding:0 16px; }
-  header { position:sticky; top:0; z-index:5; background:rgba(0,0,0,.85); backdrop-filter:blur(10px); border-bottom:1px solid var(--line); }
-  header .wrap { display:flex; align-items:center; gap:12px; height:60px; }
-  header svg { width:28px; height:28px; }
-  header b { font-size:18px; letter-spacing:-.01em; }
-  header .sp { flex:1; }
-  header small { color:var(--muted); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:40vw; }
-  h2 { font-size:22px; margin:28px 0 14px; letter-spacing:-.01em; }
-  h3 { font-size:16px; margin:0; }
-  label { display:block; font-size:12px; text-transform:uppercase; letter-spacing:.08em; color:var(--muted); margin:16px 0 6px; font-weight:600; }
-  input[type=text],input[type=email],input[type=password],input[type=number],textarea,select {
-    width:100%; background:var(--card); border:1px solid var(--line); color:var(--text); border-radius:10px;
-    padding:11px 12px; font:inherit; outline:none; transition:border-color .15s;
+  body { font:14px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif; -webkit-font-smoothing:antialiased; }
+  ::selection { background:#3a3a3a; }
+  a { color:inherit; text-decoration:none; }
+  h2 { font-size:20px; letter-spacing:-.01em; }
+  h3 { font-size:15px; letter-spacing:-.005em; }
+  .ic { display:inline-grid; place-items:center; width:18px; height:18px; flex:none; }
+  .ic svg { width:100%; height:100%; fill:none; stroke:currentColor; stroke-width:1.8; stroke-linecap:round; stroke-linejoin:round; }
+
+  /* ---------- champs */
+  label { display:block; font-size:12px; color:var(--muted); margin:14px 0 6px; font-weight:600; }
+  input[type=text],input[type=email],input[type=password],input[type=number],input[type=search],textarea,select {
+    width:100%; background:var(--card2); border:1px solid var(--line); color:var(--text); border-radius:9px;
+    padding:9px 11px; font:inherit; outline:none; transition:border-color .15s, box-shadow .15s;
   }
-  input:focus,textarea:focus,select:focus { border-color:var(--grey); }
-  textarea { min-height:96px; resize:vertical; }
-  button,.btn { font:inherit; font-weight:600; border:0; border-radius:10px; padding:10px 16px; cursor:pointer; background:var(--grey); color:#000; display:inline-flex; align-items:center; gap:8px; }
-  button.ghost { background:transparent; color:var(--grey); border:1px solid var(--line); }
-  button.danger { background:transparent; color:var(--danger); border:1px solid #3a1d1e; }
-  button.link { background:none; padding:6px; color:var(--muted); font-weight:500; }
-  button:disabled { opacity:.45; cursor:default; }
-  .row { display:flex; gap:12px; align-items:center; flex-wrap:wrap; }
-  .grid2 { display:grid; grid-template-columns:1fr 1fr; gap:0 16px; }
-  @media (max-width:640px) { .grid2 { grid-template-columns:1fr; } }
-  .card { background:var(--card); border:1px solid var(--line); border-radius:14px; padding:18px; margin-top:16px; }
-  .muted { color:var(--muted); }
-  .err { color:var(--danger); margin-top:10px; min-height:20px; font-size:14px; }
-  .center { min-height:80vh; display:grid; place-items:center; }
-  .login { width:100%; max-width:360px; text-align:center; }
-  .login svg { width:64px; height:64px; margin-bottom:12px; }
-  .login form { text-align:left; margin-top:20px; }
-  .login button { width:100%; justify-content:center; margin-top:20px; height:48px; }
-  .titles { display:grid; grid-template-columns:repeat(auto-fill,minmax(140px,1fr)); gap:16px; }
-  .tile { cursor:pointer; }
-  .tile .poster { aspect-ratio:2/3; border-radius:10px; background:var(--card2) center/cover no-repeat; border:1px solid var(--line); display:grid; place-items:center; color:var(--muted); font-weight:600; padding:8px; text-align:center; position:relative; }
-  .tile .name { margin-top:6px; font-size:14px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-  .badge { font-size:11px; padding:2px 7px; border-radius:20px; background:var(--card2); border:1px solid var(--line); color:var(--grey); }
-  .badge.off { color:var(--danger); border-color:#3a1d1e; }
-  .tile .badge { position:absolute; top:6px; left:6px; background:rgba(0,0,0,.7); }
-  .imgs { display:flex; gap:16px; flex-wrap:wrap; }
-  .imgbox { cursor:pointer; border:1px dashed var(--line); border-radius:10px; background:var(--card2) center/cover no-repeat; display:grid; place-items:center; color:var(--muted); font-size:13px; text-align:center; }
-  .imgbox.poster { width:120px; aspect-ratio:2/3; }
-  .imgbox.backdrop { width:240px; aspect-ratio:16/9; }
-  .drop { border:1px dashed var(--line); border-radius:12px; padding:18px; text-align:center; color:var(--muted); cursor:pointer; transition:border-color .15s, background .15s; }
-  .drop:hover,.drop.over { border-color:var(--grey); background:var(--card2); color:var(--grey); }
-  .season { border-top:1px solid var(--line); padding-top:14px; margin-top:14px; }
-  .season:first-of-type { border-top:0; margin-top:0; padding-top:0; }
-  table { width:100%; border-collapse:collapse; margin-top:10px; }
-  td { padding:6px 4px; border-bottom:1px solid #141414; vertical-align:middle; }
-  td.n { width:36px; color:var(--muted); font-weight:600; }
-  td.meta { color:var(--muted); font-size:13px; white-space:nowrap; width:1%; }
-  td input { padding:7px 9px; border-radius:8px; }
-  .uploads { position:fixed; left:0; right:0; bottom:0; z-index:9; background:rgba(10,10,10,.96); border-top:1px solid var(--line); max-height:40vh; overflow:auto; }
-  .uploads .wrap { padding:12px 16px; }
-  .up { display:grid; grid-template-columns:1fr auto; gap:4px 12px; font-size:13px; padding:6px 0; }
+  input:focus,textarea:focus,select:focus { border-color:var(--grey); box-shadow:0 0 0 3px rgba(198,198,198,.12); }
+  textarea { min-height:110px; resize:vertical; }
+  select { appearance:none; background-image:linear-gradient(45deg,transparent 50%,var(--muted) 50%),linear-gradient(135deg,var(--muted) 50%,transparent 50%);
+    background-position:calc(100% - 15px) 50%,calc(100% - 10px) 50%; background-size:5px 5px; background-repeat:no-repeat; padding-right:30px; }
+  input[type=checkbox] { accent-color:var(--grey); width:15px; height:15px; }
+
+  /* ---------- boutons */
+  button,.btn { font:inherit; font-weight:600; border:1px solid transparent; border-radius:9px; padding:8px 14px; cursor:pointer;
+    background:var(--grey); color:#000; display:inline-flex; align-items:center; gap:7px; white-space:nowrap; transition:background .15s, border-color .15s, color .15s; }
+  button:hover:not(:disabled) { background:#e0e0e0; }
+  button.ghost { background:transparent; color:var(--text); border-color:var(--line2); }
+  button.ghost:hover:not(:disabled) { background:var(--hover); }
+  button.danger { background:transparent; color:var(--danger); border-color:#3a1d1e; }
+  button.danger:hover:not(:disabled) { background:#1d0f10; }
+  button.danger-solid { background:var(--danger); color:#fff; }
+  button.danger-solid:hover:not(:disabled) { background:#f06368; }
+  button.link { background:none; padding:5px 7px; color:var(--muted); font-weight:500; border-radius:7px; }
+  button.link:hover:not(:disabled) { color:var(--text); background:var(--hover); }
+  button.icon { background:none; padding:6px; color:var(--muted); border-radius:8px; }
+  button.icon:hover:not(:disabled) { color:var(--text); background:var(--hover); }
+  button.sm { padding:5px 10px; font-size:13px; }
+  button:disabled { opacity:.4; cursor:default; }
+  button.arrow { background:none; color:var(--muted); padding:3px 6px; font-weight:500; }
+  button.arrow:hover:not(:disabled) { color:var(--text); background:var(--hover); }
+  .chip { background:transparent; color:var(--muted); border:1px solid var(--line); border-radius:20px; padding:5px 11px; font-weight:500; font-size:13px; }
+  .chip:hover:not(:disabled) { background:var(--hover); color:var(--text); }
+  .chip.on { background:var(--grey); color:#000; border-color:var(--grey); }
+  .chip .n { font-size:11px; opacity:.7; margin-left:2px; }
+  .seg { display:inline-flex; border:1px solid var(--line); border-radius:9px; padding:2px; background:var(--card); }
+  .seg button { background:none; color:var(--muted); padding:5px 9px; border-radius:7px; font-weight:500; }
+  .seg button.on { background:var(--hover); color:var(--text); }
+  .switch { width:34px; height:20px; padding:0; border-radius:20px; background:var(--line2); position:relative; border:0; flex:none; }
+  .switch::after { content:""; position:absolute; top:3px; left:3px; width:14px; height:14px; border-radius:50%; background:#777; transition:transform .15s, background .15s; }
+  .switch.on { background:var(--ok); }
+  .switch.on::after { transform:translateX(14px); background:#fff; }
+  .switch:hover:not(:disabled) { background:#3a3a3a; } .switch.on:hover:not(:disabled) { background:#55b866; }
+  .star { background:none; padding:4px; color:var(--dim); border:0; }
+  .star.on { color:var(--warn); } .star.on svg { fill:currentColor; }
+  .star:hover:not(:disabled) { background:var(--hover); color:var(--warn); }
+
+  /* ---------- structure */
+  .app { display:grid; grid-template-columns:var(--sidew) 1fr; min-height:100vh; }
+  aside { position:sticky; top:0; height:100vh; background:var(--side); border-right:1px solid var(--line); display:flex; flex-direction:column; padding:14px 10px; }
+  .brand { display:flex; align-items:center; gap:10px; padding:4px 8px 16px; }
+  .brand svg { width:26px; height:26px; }
+  .brand b { font-size:16px; } .brand span { color:var(--muted); font-size:12px; border:1px solid var(--line); border-radius:6px; padding:0 6px; }
+  .navsec { font-size:11px; text-transform:uppercase; letter-spacing:.08em; color:var(--dim); padding:14px 10px 6px; font-weight:600; }
+  nav a { display:flex; align-items:center; gap:10px; padding:8px 10px; border-radius:9px; color:var(--muted); font-weight:500; margin:1px 0; }
+  nav a:hover { background:var(--hover); color:var(--text); }
+  nav a.on { background:var(--card2); color:var(--text); box-shadow:inset 0 0 0 1px var(--line); }
+  nav a .cnt { margin-left:auto; font-size:11px; font-weight:700; padding:1px 7px; border-radius:20px; background:var(--line); color:var(--grey); }
+  nav a .cnt.hot { background:#3b311c; color:#f2c25c; }
+  nav a .cnt.bad { background:#3a1d1e; color:#ff8a8d; }
+  .side-foot { margin-top:auto; border-top:1px solid var(--line); padding:12px 8px 0; display:flex; align-items:center; gap:8px; }
+  .avatar { width:30px; height:30px; border-radius:50%; background:var(--line2); display:grid; place-items:center; font-weight:700; font-size:13px; color:var(--grey); flex:none; }
+  .side-foot .em { flex:1; min-width:0; font-size:12px; color:var(--muted); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .main { min-width:0; overflow-x:clip; display:flex; flex-direction:column; }
+  .top { position:sticky; top:0; z-index:6; height:60px; display:flex; align-items:center; gap:12px; padding:0 24px; background:rgba(0,0,0,.82); backdrop-filter:blur(12px); border-bottom:1px solid var(--line); }
+  .top .crumbs { display:flex; align-items:center; gap:8px; min-width:0; font-weight:600; }
+  .top .crumbs a { color:var(--muted); font-weight:500; } .top .crumbs a:hover { color:var(--text); }
+  .top .crumbs .cur { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .top .sp { flex:1; }
+  .search { position:relative; width:min(340px,40vw); }
+  .search .ic { position:absolute; left:10px; top:50%; transform:translateY(-50%); color:var(--dim); }
+  .search input { padding-left:34px; height:36px; background:var(--card); }
+  .search kbd { position:absolute; right:8px; top:50%; transform:translateY(-50%); }
+  kbd { font:11px ui-monospace,monospace; color:var(--dim); border:1px solid var(--line2); border-radius:5px; padding:0 5px; }
+  #menu { display:none; }
+  .page { padding:24px; max-width:1280px; width:100%; margin:0 auto; padding-bottom:120px; }
+  .phead { display:flex; align-items:flex-end; gap:12px; flex-wrap:wrap; margin-bottom:18px; }
+  .phead .t { flex:1; min-width:200px; }
+  .phead p { color:var(--muted); margin-top:2px; }
+  .row { display:flex; gap:10px; align-items:center; flex-wrap:wrap; }
+  .grid2 { display:grid; grid-template-columns:1fr 1fr; gap:0 14px; }
+  .muted { color:var(--muted); } .dim { color:var(--dim); }
+  .err { color:var(--danger); margin-top:10px; min-height:20px; font-size:13px; }
+  [hidden] { display:none !important; }
+
+  /* ---------- cartes */
+  .card { background:var(--card); border:1px solid var(--line); border-radius:var(--r); padding:18px; margin-top:16px; }
+  .card:first-child { margin-top:0; }
+  .card > .row:first-child > h3 { font-size:15px; }
+  .ptitle { display:flex; align-items:center; gap:10px; margin-bottom:12px; }
+  .ptitle h3 { flex:1; }
+  .sform { background:var(--card2); border:1px solid var(--line); border-radius:10px; padding:14px; margin-top:12px; }
+  .sform > b { font-size:14px; }
+  .check { display:inline-flex; align-items:center; gap:8px; font-size:13px; color:var(--text); margin:0; font-weight:500; }
+  .fields { display:flex; gap:14px; flex-wrap:wrap; margin-top:6px; }
+
+  /* ---------- KPI */
+  .kpis { display:grid; grid-template-columns:repeat(auto-fit,minmax(180px,1fr)); gap:12px; }
+  .kpi { background:var(--card); border:1px solid var(--line); border-radius:var(--r); padding:16px; display:flex; flex-direction:column; gap:4px; cursor:default; }
+  a.kpi { cursor:pointer; transition:border-color .15s, background .15s; } a.kpi:hover { border-color:var(--line2); background:var(--card2); }
+  .kpi .l { color:var(--muted); font-size:12px; font-weight:600; display:flex; align-items:center; gap:7px; }
+  .kpi .v { font-size:26px; font-weight:700; letter-spacing:-.02em; line-height:1.2; }
+  .kpi .s { color:var(--muted); font-size:12px; }
+  .kpi .meter { margin-top:6px; }
+  .cols { display:grid; grid-template-columns:1.4fr 1fr; gap:16px; margin-top:16px; align-items:start; }
+  .cols > .card { margin-top:0; }
+  .stack > .card + .card { margin-top:16px; }
+
+  /* ---------- listes */
+  .li { display:flex; align-items:center; gap:12px; padding:10px 0; border-top:1px solid var(--line); }
+  .li:first-child { border-top:0; }
+  .li .b { flex:1; min-width:0; }
+  .li .b b { display:block; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-weight:600; }
+  .li .b small { color:var(--muted); font-size:12px; }
+  a.li:hover { background:var(--hover); margin:0 -10px; padding:10px; border-radius:8px; border-top-color:transparent; }
+  a.li:hover + .li { border-top-color:transparent; }
+  .thumb { width:34px; aspect-ratio:2/3; border-radius:5px; background:var(--card2) center/cover no-repeat; border:1px solid var(--line); flex:none; }
+  .empty { text-align:center; color:var(--muted); padding:40px 16px; }
+  .empty .ic { width:34px; height:34px; color:var(--dim); margin-bottom:8px; }
+
+  /* ---------- pastilles */
+  .badge,.pill { font-size:11px; font-weight:600; padding:2px 8px; border-radius:20px; background:var(--card2); border:1px solid var(--line); color:var(--grey); white-space:nowrap; display:inline-flex; align-items:center; gap:4px; }
+  .pill.ok,.st.active,.st.done { color:#6cc77c; border-color:#1f3b25; background:#0d1a10; }
+  .pill.off,.badge.off,.st.blocked { color:#ff8a8d; border-color:#3a1d1e; background:#1a0c0d; }
+  .pill.warn,.st.new { color:#f2c25c; border-color:#3b311c; background:#1a150b; }
+  .pill.feat { color:#f2c25c; border-color:#3b311c; }
+  .st { font-size:11px; font-weight:600; padding:2px 8px; border-radius:20px; border:1px solid var(--line); white-space:nowrap; }
+  .st.seen { color:var(--grey); }
+  .tag { font-size:11px; padding:1px 7px; border-radius:20px; border:1px solid var(--line); color:var(--muted); }
+
+  /* ---------- catalogue */
+  .toolbar { display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin-bottom:16px; }
+  .toolbar .sp { flex:1; }
+  .toolbar select { width:auto; padding-top:6px; padding-bottom:6px; }
+  .titles { display:grid; grid-template-columns:repeat(auto-fill,minmax(150px,1fr)); gap:18px 14px; }
+  .tile { cursor:pointer; min-width:0; }
+  .tile .poster { aspect-ratio:2/3; border-radius:10px; background:var(--card2) center/cover no-repeat; border:1px solid var(--line); display:grid; place-items:center;
+    color:var(--muted); font-weight:600; padding:8px; text-align:center; position:relative; transition:transform .15s, border-color .15s, box-shadow .15s; overflow:hidden; }
+  .tile:hover .poster { transform:translateY(-2px); border-color:var(--line2); box-shadow:0 10px 30px rgba(0,0,0,.6); }
+  .tile .poster.hidden-t { filter:grayscale(1) brightness(.55); }
+  .tile .tl { position:absolute; top:6px; left:6px; right:6px; display:flex; gap:4px; flex-wrap:wrap; }
+  .tile .tl .badge { background:rgba(0,0,0,.75); backdrop-filter:blur(4px); }
+  .tile .warnb { position:absolute; bottom:6px; right:6px; background:rgba(26,21,11,.92); color:#f2c25c; border:1px solid #3b311c; border-radius:20px; font-size:11px; font-weight:700; padding:1px 7px; display:flex; align-items:center; gap:3px; }
+  .tile .warnb .ic { width:12px; height:12px; }
+  .tile .name { margin-top:8px; font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .tile .sub { font-size:12px; color:var(--muted); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  table { width:100%; border-collapse:collapse; }
+  .tbl { background:var(--card); border:1px solid var(--line); border-radius:var(--r); overflow:hidden; }
+  .tbl table th { text-align:left; font-size:11px; text-transform:uppercase; letter-spacing:.06em; color:var(--dim); font-weight:600; padding:10px 12px; border-bottom:1px solid var(--line); background:var(--side); white-space:nowrap; }
+  .tbl table td { padding:9px 12px; border-bottom:1px solid #161616; vertical-align:middle; }
+  .tbl table tr:last-child td { border-bottom:0; }
+  .tbl tbody tr.click { cursor:pointer; } .tbl tbody tr.click:hover td { background:#0f0f0f; }
+  .tbl .nm { display:flex; align-items:center; gap:12px; min-width:220px; }
+  .tbl .nm b { display:block; font-weight:600; }
+  .tbl .nm small { color:var(--muted); font-size:12px; }
+  .tbl td.num { color:var(--muted); white-space:nowrap; font-variant-numeric:tabular-nums; }
+  .issues { display:flex; gap:4px; flex-wrap:wrap; }
+  .count { color:var(--muted); font-size:13px; }
+
+  /* ---------- éditeur */
+  .ed { display:grid; grid-template-columns:minmax(0,1fr) 320px; gap:16px; align-items:start; }
+  .ed > div > .card:first-child { margin-top:0; }
+  .imgs { display:flex; gap:12px; }
+  .imgbox { cursor:pointer; border:1px dashed var(--line2); border-radius:10px; background:var(--card2) center/cover no-repeat; display:grid; place-items:center; color:var(--muted); font-size:12px; text-align:center; position:relative; white-space:pre-line; transition:border-color .15s; }
+  .imgbox:hover { border-color:var(--grey); }
+  .imgbox.poster { width:110px; aspect-ratio:2/3; flex:none; }
+  .imgbox.backdrop { flex:1; aspect-ratio:16/9; }
+  .toggle-row { display:flex; align-items:center; gap:12px; padding:10px 0; border-top:1px solid var(--line); }
+  .ptitle + .toggle-row { border-top:0; }
+  .toggle-row div { flex:1; } .toggle-row small { display:block; color:var(--muted); font-size:12px; }
+  .facts { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+  .facts div { background:var(--card2); border:1px solid var(--line); border-radius:9px; padding:10px; }
+  .facts b { display:block; font-size:17px; } .facts small { color:var(--muted); font-size:11px; }
+  .savebar { position:sticky; bottom:16px; z-index:5; margin-top:16px; display:flex; align-items:center; gap:10px; background:rgba(16,16,16,.92); backdrop-filter:blur(10px);
+    border:1px solid var(--line2); border-radius:var(--r); padding:10px 12px; box-shadow:0 10px 40px rgba(0,0,0,.6); }
+  .savebar .state { flex:1; font-size:13px; color:var(--muted); display:flex; align-items:center; gap:8px; }
+  .savebar .state.dirty { color:#f2c25c; }
+  .savebar .state .dot { width:7px; height:7px; border-radius:50%; background:currentColor; }
+  .drop { border:1px dashed var(--line2); border-radius:10px; padding:16px; text-align:center; color:var(--muted); cursor:pointer; transition:border-color .15s, background .15s; display:flex; align-items:center; justify-content:center; gap:8px; }
+  .drop:hover,.drop.over { border-color:var(--grey); background:var(--card2); color:var(--text); }
+  .season { border:1px solid var(--line); border-radius:10px; padding:12px; margin-top:12px; background:#090909; }
+  .season .shead { display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+  .season .shead input { max-width:240px; padding:6px 9px; }
+  .season .snum { font-weight:700; color:var(--muted); font-size:13px; min-width:34px; }
+  .season table { margin-top:8px; }
+  .season td { padding:5px 4px; border-bottom:1px solid #141414; vertical-align:middle; }
+  .season tr:last-child td { border-bottom:0; }
+  td.n { width:34px; color:var(--muted); font-weight:600; font-variant-numeric:tabular-nums; }
+  td.meta { color:var(--muted); font-size:12px; white-space:nowrap; width:1%; }
+  td input { padding:6px 9px; border-radius:7px; background:transparent; border-color:transparent; }
+  td input:hover { border-color:var(--line); }
+  td input:focus { background:var(--card2); }
+  .handle { cursor:grab; color:var(--dim); user-select:none; width:22px; text-align:center; font-size:15px; }
+  tr.dragging { opacity:.4; }
+  tr.over-top td { box-shadow:inset 0 2px 0 var(--grey); }
+  tr.over-bottom td { box-shadow:inset 0 -2px 0 var(--grey); }
+
+  /* ---------- catégories, stockages, utilisateurs (cartes existantes) */
+  .cat { border-top:1px solid var(--line); padding:12px 0; }
+  .cat:first-of-type { border-top:0; }
+  .cat input[type=text] { max-width:260px; padding:7px 10px; }
+  .cat-titles { margin:10px 0 0 4px; }
+  .cat-titles .it { display:flex; align-items:center; gap:8px; padding:4px 0; font-size:14px; }
+  .cat-titles .it .rk { width:24px; color:var(--muted); font-weight:700; }
+  .meter { height:6px; background:var(--line); border-radius:6px; overflow:hidden; margin-top:6px; }
+  .meter i { display:block; height:100%; background:var(--grey); border-radius:6px; }
+  .meter i.warn { background:var(--warn); }
+  .meter i.full { background:var(--danger); }
+  .store { border-top:1px solid var(--line); padding:14px 0; }
+  .store:first-of-type { border-top:0; }
+  .store .tag { margin-left:2px; }
+  .store.off { opacity:.5; }
+  .user { display:flex; align-items:center; gap:8px; padding:12px 0; border-top:1px solid var(--line); flex-wrap:wrap; }
+  .user:first-of-type { border-top:0; }
+  .user .who { flex:1; min-width:200px; }
+  .user .who small { display:block; color:var(--muted); font-size:12px; }
+  .req .msg { flex-basis:100%; white-space:pre-wrap; word-break:break-word; font-size:14px; color:var(--text); background:var(--card2); border-radius:9px; padding:9px 11px; }
+  .req .reply { flex-basis:100%; font-size:13px; color:var(--grey); border-left:2px solid var(--line2); padding:2px 0 2px 10px; white-space:pre-wrap; }
+
+  /* ---------- connexion */
+  .center { min-height:100vh; display:grid; place-items:center; padding:16px; }
+  .login { width:100%; max-width:380px; background:var(--card); border:1px solid var(--line); border-radius:16px; padding:28px; }
+  .login svg { width:44px; height:44px; margin-bottom:14px; }
+  .login button { width:100%; justify-content:center; margin-top:20px; height:44px; }
+
+  /* ---------- envois */
+  .uploads { position:fixed; right:16px; bottom:16px; z-index:30; width:min(380px,calc(100vw - 32px)); background:rgba(14,14,14,.97); border:1px solid var(--line2); border-radius:var(--r); box-shadow:0 20px 50px rgba(0,0,0,.7); overflow:hidden; }
+  .uploads .uh { display:flex; align-items:center; gap:10px; padding:10px 12px; border-bottom:1px solid var(--line); cursor:pointer; }
+  .uploads .uh b { flex:1; font-size:13px; }
+  .uploads .uh .meter { width:90px; margin:0; }
+  .uploads.min #uplist { display:none; }
+  .uploads.min .uh { border-bottom:0; }
+  #uplist { max-height:42vh; overflow:auto; padding:4px 12px; }
+  .up { display:grid; grid-template-columns:1fr auto; gap:4px 12px; font-size:12px; padding:8px 0; border-top:1px solid var(--line); }
+  .up:first-child { border-top:0; }
+  .up > span:first-child { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
   .bar { grid-column:1/-1; height:4px; background:var(--line); border-radius:4px; overflow:hidden; }
   .bar i { display:block; height:100%; background:var(--grey); width:0; transition:width .2s; }
   .up.done .bar i { background:var(--ok); }
   .up.fail .bar i { background:var(--danger); }
-  .toast { position:fixed; top:72px; left:50%; transform:translateX(-50%); background:var(--card2); border:1px solid var(--line); padding:10px 16px; border-radius:10px; z-index:20; font-size:14px; }
-  .handle { cursor:grab; color:var(--muted); user-select:none; width:24px; text-align:center; font-size:16px; }
-  tr.dragging { opacity:.4; }
-  tr.over-top td { box-shadow:inset 0 2px 0 var(--grey); }
-  tr.over-bottom td { box-shadow:inset 0 -2px 0 var(--grey); }
-  button.arrow { background:none; color:var(--muted); padding:4px 6px; font-weight:500; }
-  button.arrow:hover:not(:disabled) { color:var(--text); }
-  .chip { background:transparent; color:var(--grey); border:1px solid var(--line); border-radius:20px; padding:6px 12px; font-weight:500; }
-  .chip.on { background:var(--grey); color:#000; border-color:var(--grey); }
-  .cat { border-top:1px solid var(--line); padding:12px 0; }
-  .cat:first-of-type { border-top:0; }
-  .cat input[type=text] { max-width:260px; padding:8px 10px; }
-  .cat-titles { margin:10px 0 0 4px; }
-  .cat-titles .it { display:flex; align-items:center; gap:8px; padding:4px 0; font-size:14px; }
-  .cat-titles .it .rk { width:24px; color:var(--muted); font-weight:700; }
-  .check { display:inline-flex; align-items:center; gap:6px; font-size:13px; color:var(--grey); }
-  .meter { height:6px; background:var(--line); border-radius:6px; overflow:hidden; margin-top:6px; }
-  .meter i { display:block; height:100%; background:var(--grey); }
-  .meter i.warn { background:#f5a524; }
-  .meter i.full { background:var(--danger); }
-  .store { border-top:1px solid var(--line); padding:12px 0; }
-  .store:first-of-type { border-top:0; }
-  .store .tag { font-size:11px; padding:1px 7px; border-radius:20px; border:1px solid var(--line); color:var(--muted); margin-left:6px; }
-  .store.off { opacity:.5; }
-  .sform { background:var(--card2); border:1px solid var(--line); border-radius:12px; padding:14px; margin-top:12px; }
-  .card.coll > .row:first-child h3 { cursor:pointer; user-select:none; }
-  .card.coll > .row:first-child h3::before { content:"▸"; display:inline-block; width:18px; color:var(--muted); transition:transform .15s; }
-  .card.coll.open > .row:first-child h3::before { transform:rotate(90deg); }
-  .card.coll:not(.open) > :not(:first-child) { display:none; }
-  .card.coll:not(.open) > .row:first-child > :not(h3):not(.sum) { display:none; }
-  .card.coll .sum { color:var(--muted); font-size:13px; }
-  .card.coll.open .sum { display:none; }
-  .user { display:flex; align-items:center; gap:10px; padding:10px 0; border-top:1px solid var(--line); flex-wrap:wrap; }
-  .user:first-of-type { border-top:0; }
-  .user .who { flex:1; min-width:180px; }
-  .user .who small { display:block; color:var(--muted); font-size:12px; }
-  .st { font-size:11px; padding:2px 8px; border-radius:20px; border:1px solid var(--line); }
-  .st.active { color:var(--ok); border-color:#1f3b25; }
-  .st.blocked { color:var(--danger); border-color:#3a1d1e; }
-  .fields { display:flex; gap:14px; flex-wrap:wrap; margin-top:6px; }
-  .st.new { color:#e5b84d; border-color:#3b311c; }
-  .st.seen { color:var(--grey); }
-  .st.done { color:var(--ok); border-color:#1f3b25; }
-  .req .msg { flex-basis:100%; white-space:pre-wrap; word-break:break-word; font-size:14px; color:var(--text); }
-  .req .reply { flex-basis:100%; font-size:13px; color:var(--grey); background:var(--card2); border:1px solid var(--line); border-radius:10px; padding:8px 10px; white-space:pre-wrap; }
-  [hidden] { display:none !important; }
+  .up.fail > span:nth-child(2) { color:var(--danger); white-space:normal; }
+
+  /* ---------- toasts & modales */
+  .toasts { position:fixed; top:72px; right:16px; z-index:50; display:flex; flex-direction:column; gap:8px; align-items:flex-end; pointer-events:none; }
+  .toast { background:var(--card2); border:1px solid var(--line2); padding:10px 14px; border-radius:10px; font-size:13px; max-width:420px; box-shadow:0 10px 30px rgba(0,0,0,.6); animation:tin .18s ease-out; pointer-events:auto; white-space:pre-line; }
+  .toast.e { border-color:#4a2224; color:#ffb3b5; }
+  @keyframes tin { from { opacity:0; transform:translateY(-6px); } }
+  .modal-bg { position:fixed; inset:0; z-index:60; background:rgba(0,0,0,.65); backdrop-filter:blur(3px); display:grid; place-items:center; padding:16px; animation:fin .12s; }
+  @keyframes fin { from { opacity:0; } }
+  .modal { width:100%; max-width:440px; background:var(--card); border:1px solid var(--line2); border-radius:14px; padding:20px; box-shadow:0 30px 80px rgba(0,0,0,.8); }
+  .modal p.txt { color:var(--muted); margin-top:8px; white-space:pre-wrap; font-size:13px; }
+  .modal .acts { display:flex; justify-content:flex-end; gap:8px; margin-top:20px; }
+  .scrim { display:none; }
+
+  @media (max-width:1080px) { .ed { grid-template-columns:minmax(0,1fr); } .cols { grid-template-columns:minmax(0,1fr); } }
+  @media (max-width:820px) {
+    .app { grid-template-columns:1fr; }
+    aside { position:fixed; left:0; top:0; z-index:40; width:var(--sidew); transform:translateX(-100%); transition:transform .2s; }
+    .nav-open aside { transform:none; }
+    .nav-open .scrim { display:block; position:fixed; inset:0; z-index:35; background:rgba(0,0,0,.6); }
+    #menu { display:inline-grid; }
+    .top { padding:0 12px; } .page { padding:16px 12px 120px; }
+    .search { width:auto; flex:1; } .search kbd { display:none; }
+    .top .crumbs { display:none; }
+    .grid2 { grid-template-columns:1fr; }
+    .tbl { overflow-x:auto; }
+    .kpis { grid-template-columns:1fr 1fr; }
+    #topacts .lbl { display:none; } #topacts button { padding:7px 9px; }
+    .savebar kbd, .season td.meta:nth-child(4), .handle { display:none; }
+    .savebar .state { font-size:12px; }
+    .season { padding:10px 8px; }
+    .imgbox.poster { width:90px; }
+    .ptitle { flex-wrap:wrap; }
+  }
 </style>
 </head>
 <body>
@@ -125,9 +305,9 @@
 
 <!-- Connexion -->
 <section id="v-login" class="center" hidden>
-  <div class="login wrap">
+  <div class="login">
     <svg><use href="#logo"/></svg>
-    <h2 style="margin:0">Admin xyd</h2>
+    <h2>Admin xyd</h2>
     <p class="muted">Connecte-toi avec ton compte xyd.</p>
     <form id="f-login">
       <label for="l-email">Email</label>
@@ -141,17 +321,34 @@
 </section>
 
 <!-- Application -->
-<section id="v-app" hidden>
-  <header><div class="wrap">
-    <svg><use href="#logo"/></svg><b>admin</b><span class="sp"></span>
-    <small id="who"></small>
-    <button class="link" id="b-logout">Déconnexion</button>
-  </div></header>
-  <main class="wrap" id="main"></main>
+<section id="v-app" class="app" hidden>
+  <aside>
+    <a class="brand" href="#/"><svg><use href="#logo"/></svg><b>xyd</b><span>admin</span></a>
+    <nav id="nav"></nav>
+    <div class="side-foot">
+      <div class="avatar" id="avatar">?</div>
+      <span class="em" id="who"></span>
+      <button class="icon" id="b-logout" title="Déconnexion"></button>
+    </div>
+  </aside>
+  <div class="scrim" id="scrim"></div>
+  <div class="main">
+    <div class="top">
+      <button class="icon" id="menu" title="Menu"></button>
+      <div class="crumbs" id="crumbs"></div>
+      <span class="sp"></span>
+      <div class="search" id="searchbox"><input id="q" type="search" placeholder="Rechercher un titre…" autocomplete="off"><kbd>/</kbd></div>
+      <div class="row" id="topacts" style="flex-wrap:nowrap"></div>
+    </div>
+    <main class="page" id="main"></main>
+  </div>
 </section>
 
-<div class="uploads" id="uploads" hidden><div class="wrap" id="uplist"></div></div>
-<div class="toast" id="toast" hidden></div>
+<div class="uploads" id="uploads" hidden>
+  <div class="uh" id="uphead"><b id="upsum">Envois</b><div class="meter"><i id="upbar" style="width:0"></i></div><span class="ic" id="uptog"></span></div>
+  <div id="uplist"></div>
+</div>
+<div class="toasts" id="toasts"></div>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
 <script>
@@ -183,7 +380,7 @@ let signupSettings = null;  // app_settings.signup
 let usersAvailable = true;
 let requests = [];          // requêtes des utilisateurs (table user_requests)
 let requestsAvailable = true;
-const refreshPool = () => poolRender?.(); // false tant que la migration « categories » n'est pas appliquée
+const refreshPool = () => { poolRender?.(); renderNav(); };
 let uploading = 0;
 
 // ---------------------------------------------------------------- utilitaires
@@ -198,19 +395,110 @@ function h(tag, attrs, ...kids) {
   for (const c of kids.flat()) if (c != null && c !== false) el.append(c.nodeType ? c : String(c));
   return el;
 }
+const IC = {
+  home: "M3 11l9-8 9 8M5 10v10h5v-6h4v6h5V10",
+  film: "M4 4h16v16H4zM8 4v16M16 4v16M4 9h4M4 15h4M16 9h4M16 15h4",
+  inbox: "M3 13h5l2 3h4l2-3h5M5.5 5h13L21 13v6H3v-6z",
+  users: "M16 19v-1a4 4 0 00-4-4H6a4 4 0 00-4 4v1M9 10a3 3 0 100-6 3 3 0 000 6M22 19v-1a4 4 0 00-3-3.9M16 4.1a3 3 0 010 5.8",
+  download: "M12 3v12M7 10l5 5 5-5M4 21h16",
+  db: "M4 6c0-1.7 3.6-3 8-3s8 1.3 8 3-3.6 3-8 3-8-1.3-8-3zM4 6v12c0 1.7 3.6 3 8 3s8-1.3 8-3V6M4 12c0 1.7 3.6 3 8 3s8-1.3 8-3",
+  tag: "M3 12V3h9l9 9-9 9zM7.5 7.5h.01",
+  search: "M11 18a7 7 0 100-14 7 7 0 000 14zM21 21l-5-5",
+  plus: "M12 5v14M5 12h14",
+  logout: "M15 3h4a2 2 0 012 2v14a2 2 0 01-2 2h-4M10 17l-5-5 5-5M5 12h12",
+  menu: "M4 6h16M4 12h16M4 18h16",
+  grid: "M4 4h7v7H4zM13 4h7v7h-7zM4 13h7v7H4zM13 13h7v7h-7z",
+  list: "M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01",
+  upload: "M12 16V4M7 9l5-5 5 5M4 20h16",
+  star: "M12 3l2.8 5.8 6.2.9-4.5 4.4 1 6.2L12 17.4 6.5 20.3l1-6.2L3 9.7l6.2-.9z",
+  alert: "M12 9v4M12 17h.01M10.3 3.9L1.8 18a2 2 0 001.7 3h17a2 2 0 001.7-3L13.7 3.9a2 2 0 00-3.4 0z",
+  back: "M15 18l-6-6 6-6",
+  chev: "M6 9l6 6 6-6",
+  x: "M18 6L6 18M6 6l12 12",
+  trash: "M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14",
+  check: "M20 6L9 17l-5-5",
+  tv: "M3 6h18v12H3zM8 21h8",
+  clock: "M12 21a9 9 0 100-18 9 9 0 000 18zM12 7v5l3 2",
+  save: "M5 3h11l5 5v13H3V3zM7 3v6h8M7 21v-7h10v7",
+};
+function icon(n) {
+  const s = document.createElement("span");
+  s.className = "ic";
+  s.innerHTML = `<svg viewBox="0 0 24 24"><path d="${IC[n] || ""}"/></svg>`;
+  return s;
+}
 const fmtSize = (b) => !b ? "" : b >= 1 << 30 ? (b / 1073741824).toFixed(1).replace(".", ",") + " Go" : Math.round(b / 1048576) + " Mo";
 const fmtDur = (s) => !s ? "" : s >= 3600 ? `${Math.floor(s / 3600)} h ${String(Math.floor(s % 3600 / 60)).padStart(2, "0")}` : `${Math.round(s / 60)} min`;
 const pad = (n) => String(n).padStart(2, "0");
 const rand = () => Math.random().toString(36).slice(2, 8);
+const plural = (n, w, ws) => `${n} ${n > 1 ? (ws || w + "s") : w}`;
 const slug = (s) => (s || "x").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase()
   .replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 40) || "x";
+const norm = (s) => (s || "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
 const extOf = (f) => { const e = (f.name.split(".").pop() || "").toLowerCase(); return ["mp4", "m4v", "mkv", "mov"].includes(e) ? e : "mp4"; };
+const ago = (d) => {
+  const s = (Date.now() - new Date(d)) / 1000;
+  if (s < 60) return "à l'instant";
+  if (s < 3600) return `il y a ${Math.floor(s / 60)} min`;
+  if (s < 86400) return `il y a ${Math.floor(s / 3600)} h`;
+  if (s < 86400 * 7) return `il y a ${Math.floor(s / 86400)} j`;
+  return new Date(d).toLocaleDateString("fr-FR", { day: "2-digit", month: "short" });
+};
+const pref = (k, d) => { try { return localStorage.getItem("xyd.admin." + k) ?? d; } catch { return d; } };
+const setPref = (k, v) => { try { localStorage.setItem("xyd.admin." + k, v); } catch {} };
 
-function toast(msg, ms = 2600) {
-  const t = $("toast"); t.textContent = msg; t.hidden = false;
-  clearTimeout(toast.t); toast.t = setTimeout(() => (t.hidden = true), ms);
+function toast(msg, ms = 2600, kind = "") {
+  const t = h("div", { class: "toast " + kind }, msg);
+  $("toasts").append(t);
+  while ($("toasts").children.length > 4) $("toasts").firstElementChild.remove();
+  setTimeout(() => t.remove(), ms);
 }
-function fail(e) { console.error(e); toast("⚠️ " + (e?.message || e), 5000); }
+function fail(e) { console.error(e); toast(e?.message || String(e), 6000, "e"); }
+
+/**
+ * Fenêtre modale (remplace prompt/confirm). Sans champ : renvoie true/false.
+ * Avec champs : renvoie { clé: valeur } ou null si annulé.
+ */
+function uiForm({ title, text, fields = [], ok = "Valider", danger = false, validate }) {
+  return new Promise((resolve) => {
+    const inputs = fields.map((f) => {
+      const el = f.type === "textarea"
+        ? h("textarea", { placeholder: f.placeholder || "" })
+        : h("input", { type: f.type || "text", placeholder: f.placeholder || "", autocomplete: f.type === "password" ? "new-password" : "off" });
+      el.value = f.value ?? "";
+      return [f, el];
+    });
+    const err = h("div", { class: "err" });
+    const close = (v) => { bg.remove(); document.removeEventListener("keydown", onKey, true); resolve(v); };
+    const cancelValue = fields.length ? null : false;
+    const onKey = (e) => { if (e.key === "Escape") { e.preventDefault(); close(cancelValue); } };
+    const okBtn = h("button", { type: "submit", class: danger ? "danger-solid" : "" }, ok);
+    const form = h("form", { class: "modal", onsubmit: (e) => {
+      e.preventDefault();
+      if (!fields.length) return close(true);
+      const out = {};
+      for (const [f, el] of inputs) out[f.key] = el.value;
+      const msg = validate?.(out);
+      if (msg) return (err.textContent = msg);
+      close(out);
+    } },
+      h("h3", {}, title),
+      text ? h("p", { class: "txt" }, text) : "",
+      ...inputs.map(([f, el]) => h("div", {}, f.label ? h("label", {}, f.label) : "", el)),
+      fields.length ? err : "",
+      h("div", { class: "acts" }, h("button", { type: "button", class: "ghost", onclick: () => close(cancelValue) }, "Annuler"), okBtn),
+    );
+    const bg = h("div", { class: "modal-bg", onmousedown: (e) => { if (e.target === bg) close(cancelValue); } }, form);
+    document.body.append(bg);
+    document.addEventListener("keydown", onKey, true);
+    setTimeout(() => (inputs[0]?.[1] || okBtn).focus(), 0);
+  });
+}
+const uiConfirm = (text, o = {}) => uiForm({ title: o.title || "Confirmer", text, ok: o.ok || "Confirmer", danger: o.danger });
+async function uiPrompt(title, value, o = {}) {
+  const r = await uiForm({ title, text: o.text, ok: o.ok || "Enregistrer", fields: [{ key: "v", value, type: o.type, placeholder: o.placeholder, label: o.label }] });
+  return r ? r.v : null;
+}
 
 /** Durée d'une vidéo locale (lecture des métadonnées par le navigateur). 0 si inconnue. */
 function probeDuration(file) {
@@ -289,21 +577,41 @@ async function uploadToStore(file, key, label) {
     throw e;
   } finally {
     uploading--;
+    upSummary();
   }
 }
 
+// Plateau des envois (en bas à droite) : progression globale + détail repliable.
+const upRows = new Set();
+function upSummary() {
+  const rows = [...upRows];
+  if (!rows.length) { $("uploads").hidden = true; return; }
+  const active = rows.filter((r) => r.state === "run");
+  const failed = rows.filter((r) => r.state === "fail").length;
+  const tot = active.reduce((a, r) => a + r.size, 0);
+  const sent = active.reduce((a, r) => a + r.size * r.p, 0);
+  $("upsum").textContent = active.length
+    ? `${plural(active.length, "envoi")} en cours · ${tot ? Math.floor((sent / tot) * 100) : 0} %`
+    : failed ? `${plural(failed, "envoi")} en échec` : "Envois terminés";
+  $("upbar").style.width = (active.length ? (tot ? (sent / tot) * 100 : 0) : 100) + "%";
+  $("upbar").className = active.length ? "" : failed ? "full" : "";
+}
 function addUploadRow(name, size) {
   $("uploads").hidden = false;
   const bar = h("i");
   const status = h("span", { class: "muted" }, "0 %");
   const dest = h("span", { class: "muted" });
-  const el = h("div", { class: "up" }, h("span", {}, name, " ", h("span", { class: "muted" }, fmtSize(size)), dest), status, h("div", { class: "bar" }, bar));
+  const el = h("div", { class: "up" }, h("span", { title: name }, name, " ", h("span", { class: "muted" }, fmtSize(size)), dest), status, h("div", { class: "bar" }, bar));
+  const rec = { size, p: 0, state: "run" };
+  upRows.add(rec);
   $("uplist").prepend(el);
+  upSummary();
   return {
     dest(n) { dest.textContent = " → " + n; },
-    progress(p) { bar.style.width = (p * 100).toFixed(1) + "%"; status.textContent = Math.floor(p * 100) + " %"; },
-    done() { this.progress(1); el.classList.add("done"); status.textContent = "✓ envoyé"; setTimeout(() => { el.remove(); if (!$("uplist").children.length) $("uploads").hidden = true; }, 4000); },
-    fail(m) { el.classList.add("fail"); bar.style.width = "100%"; status.textContent = "échec : " + m; },
+    progress(p) { rec.p = p; bar.style.width = (p * 100).toFixed(1) + "%"; status.textContent = Math.floor(p * 100) + " %"; upSummary(); },
+    done() { this.progress(1); rec.state = "done"; el.classList.add("done"); status.textContent = "✓ envoyé"; upSummary(); setTimeout(() => { el.remove(); upRows.delete(rec); upSummary(); }, 4000); },
+    fail(m) { rec.state = "fail"; el.classList.add("fail"); bar.style.width = "100%"; status.textContent = "échec : " + m; upSummary();
+      el.append(h("button", { class: "link", style: { gridColumn: "1/-1", justifySelf: "start" }, onclick: () => { el.remove(); upRows.delete(rec); upSummary(); } }, "Retirer")); },
   };
 }
 
@@ -380,7 +688,105 @@ async function load() {
   }));
 }
 
-// ---------------------------------------------------------------- vues
+/** Chiffres d'un titre : épisodes, taille, durée, éléments manquants. */
+function statsOf(t) {
+  const eps = t.kind === "film" ? [] : t.seasons.flatMap((s) => s.episodes);
+  const size = t.kind === "film" ? (t.size_bytes || 0) : eps.reduce((a, e) => a + (e.size_bytes || 0), 0);
+  const dur = t.kind === "film" ? (t.duration_s || 0) : eps.reduce((a, e) => a + (e.duration_s || 0), 0);
+  const issues = [];
+  if (!t.poster_url) issues.push("affiche");
+  if (!(t.synopsis || "").trim()) issues.push("résumé");
+  if (t.featured && !t.backdrop_url) issues.push("image 16:9");
+  if (t.kind === "film" && !t.video_key) issues.push("vidéo");
+  if (t.kind === "serie" && !eps.length) issues.push("épisodes");
+  return { eps: eps.length, seasons: t.seasons.length, size, dur, issues, noSyn: eps.filter((e) => !(e.synopsis || "").trim()).length };
+}
+const subOf = (t, s = statsOf(t)) => t.kind === "film"
+  ? [t.year, fmtDur(s.dur)].filter(Boolean).join(" · ") || "Film"
+  : [t.year, plural(s.seasons, "saison"), plural(s.eps, "ép.", "ép.")].filter(Boolean).join(" · ");
+
+// ---------------------------------------------------------------- navigation
+const PAGES = [
+  { id: "", label: "Vue d'ensemble", ic: "home" },
+  { id: "catalogue", label: "Catalogue", ic: "film" },
+  { sec: "Communauté" },
+  { id: "requetes", label: "Requêtes", ic: "inbox", show: () => requestsAvailable },
+  { id: "utilisateurs", label: "Utilisateurs", ic: "users", show: () => usersAvailable },
+  { sec: "Système" },
+  { id: "telechargements", label: "Téléchargements", ic: "download", show: () => limitsAvailable },
+  { id: "stockages", label: "Stockages", ic: "db", show: () => storagesAvailable },
+  { id: "categories", label: "Catégories", ic: "tag", show: () => catsAvailable },
+];
+const go = (hash) => { if (location.hash === hash) route(); else location.hash = hash; };
+const curPage = () => (location.hash.replace(/^#\/?/, "").split("/")[0]) || "";
+
+function navCount(id) {
+  if (id === "catalogue") return [titles.length, ""];
+  if (id === "requetes") { const n = requests.filter((r) => r.status === "new").length; return n ? [n, "hot"] : null; }
+  if (id === "utilisateurs") return [users.length, users.some((u) => u.status === "blocked") ? "" : ""];
+  if (id === "telechargements") { const n = dlStats.filter((u) => u.heavy).length; return n ? [n, "bad"] : null; }
+  if (id === "stockages") {
+    const act = storages.filter((x) => x.active);
+    const p = pct(act.reduce((a, x) => a + x.used_bytes, 0), act.reduce((a, x) => a + x.quota_bytes, 0));
+    return act.length ? [p + " %", p >= 90 ? "bad" : p >= 75 ? "hot" : ""] : null;
+  }
+  return null;
+}
+function renderNav() {
+  const cur = curPage();
+  const page = cur === "titre" || cur === "nouveau" ? "catalogue" : cur;
+  $("nav").replaceChildren(...PAGES.filter((p) => !p.show || p.show()).map((p) => {
+    if (p.sec) return h("div", { class: "navsec" }, p.sec);
+    const c = navCount(p.id);
+    return h("a", { href: "#/" + p.id, class: page === p.id ? "on" : "" }, icon(p.ic), p.label, c ? h("span", { class: "cnt " + c[1] }, c[0]) : "");
+  }));
+}
+function setTop(crumbs, acts = []) {
+  $("crumbs").replaceChildren(...crumbs.flatMap((c, i) => [
+    i ? h("span", { class: "dim" }, "/") : "",
+    c.href ? h("a", { href: c.href }, c.label) : h("span", { class: "cur" }, c.label),
+  ]));
+  $("topacts").replaceChildren(...acts);
+}
+const newBtns = () => [
+  h("button", { class: "ghost sm", onclick: () => go("#/nouveau/serie") }, icon("plus"), h("span", { class: "lbl" }, "Série")),
+  h("button", { class: "sm", onclick: () => go("#/nouveau/film") }, icon("plus"), h("span", { class: "lbl" }, "Film")),
+];
+
+let leaveGuard = null; // éditeur : modifications non enregistrées
+let editorDirty = () => false;
+function route() {
+  document.body.classList.remove("nav-open");
+  poolRender = null;
+  const [page, arg] = location.hash.replace(/^#\/?/, "").split("/");
+  renderNav();
+  window.scrollTo(0, 0);
+  switch (page || "") {
+    case "": return renderOverview();
+    case "catalogue": return renderCatalog();
+    case "titre": {
+      const t = titles.find((x) => x.id === arg);
+      return t ? renderEditor(t) : go("#/catalogue");
+    }
+    case "nouveau": return renderEditor(newTitle(arg === "film" ? "film" : "serie"));
+    case "requetes": return simplePage("Requêtes", "Demandes de séries et films, avis et problèmes envoyés depuis l'app.", requestsCard());
+    case "utilisateurs": return simplePage("Utilisateurs", "Comptes, statuts et mail d'inscription.", usersCard());
+    case "telechargements": return simplePage("Téléchargements", "Limitation multicouche et consommation par personne.", downloadsCard());
+    case "stockages": return simplePage("Stockages", "Pool de stockages vidéo, remplissage par priorité.", storageCard());
+    case "categories": return simplePage("Catégories", "Rangées affichées sur l'accueil de l'app, dans l'ordre.", categoriesCard());
+    default: go("#/");
+  }
+}
+function simplePage(title, sub, card) {
+  setTop([{ label: title }], newBtns());
+  $("main").replaceChildren(h("div", { class: "phead" }, h("div", { class: "t" }, h("h2", {}, title), h("p", {}, sub))), card);
+}
+window.addEventListener("hashchange", () => {
+  if (leaveGuard && !leaveGuard()) return;
+  route();
+});
+
+// ---------------------------------------------------------------- démarrage
 async function boot() {
   const { data: { session } } = await sb.auth.getSession();
   if (!session) return showLogin();
@@ -390,10 +796,12 @@ async function boot() {
     return showLogin("Ce compte n'est pas administrateur.");
   }
   $("who").textContent = session.user.email;
+  $("avatar").textContent = (session.user.email || "?")[0].toUpperCase();
   $("v-login").hidden = true;
   $("v-app").hidden = false;
+  $("main").replaceChildren(h("div", { class: "empty" }, "Chargement…"));
   try { await load(); } catch (e) { fail(e); }
-  renderList();
+  route();
 }
 
 function showLogin(msg) {
@@ -409,72 +817,256 @@ $("f-login").onsubmit = async (e) => {
   if (error) return ($("l-err").textContent = /invalid/i.test(error.message) ? "Email ou mot de passe incorrect" : error.message);
   boot();
 };
-$("b-logout").onclick = async () => { await sb.auth.signOut(); showLogin(); };
-window.addEventListener("beforeunload", (e) => { if (uploading) { e.preventDefault(); e.returnValue = ""; } });
+$("b-logout").append(icon("logout"));
+$("b-logout").onclick = async () => {
+  if (uploading && !(await uiConfirm("Des envois sont en cours : ils seront interrompus.", { ok: "Se déconnecter", danger: true }))) return;
+  await sb.auth.signOut(); showLogin();
+};
+$("menu").append(icon("menu"));
+$("menu").onclick = () => document.body.classList.toggle("nav-open");
+$("scrim").onclick = () => document.body.classList.remove("nav-open");
+$("searchbox").prepend(icon("search"));
+$("uptog").append(icon("chev"));
+$("uphead").onclick = () => $("uploads").classList.toggle("min");
+window.addEventListener("beforeunload", (e) => { if (uploading || editorDirty()) { e.preventDefault(); e.returnValue = ""; } });
 
-function renderList() {
-  const main = $("main");
-  main.replaceChildren(
-    h("div", { class: "row", style: { marginTop: "24px" } },
-      h("h2", { style: { margin: 0, flex: 1 } }, "Catalogue"),
-      h("button", { onclick: () => renderEditor(newTitle("serie")) }, "+ Série"),
-      h("button", { onclick: () => renderEditor(newTitle("film")) }, "+ Film"),
+// Recherche globale : filtre le catalogue (y va depuis n'importe quelle page).
+let catQuery = "";
+$("q").oninput = () => {
+  catQuery = $("q").value;
+  if (curPage() !== "catalogue") go("#/catalogue"); else renderCatalogBody?.();
+};
+document.addEventListener("keydown", (e) => {
+  const typing = /^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement?.tagName);
+  if (e.key === "/" && !typing && !document.querySelector(".modal-bg")) { e.preventDefault(); $("q").focus(); $("q").select(); }
+  if (e.key === "Escape" && document.activeElement === $("q")) { $("q").value = ""; catQuery = ""; renderCatalogBody?.(); $("q").blur(); }
+});
+
+// ---------------------------------------------------------------- vue d'ensemble
+function renderOverview() {
+  setTop([{ label: "Vue d'ensemble" }], newBtns());
+  const all = titles.map((t) => [t, statsOf(t)]);
+  const series = titles.filter((t) => t.kind === "serie").length;
+  const eps = all.reduce((a, [, s]) => a + s.eps, 0);
+  const bytes = all.reduce((a, [, s]) => a + s.size, 0);
+  const secs = all.reduce((a, [, s]) => a + s.dur, 0);
+  const hidden = titles.filter((t) => !t.published).length;
+  const todo = all.filter(([, s]) => s.issues.length);
+  const newReq = requests.filter((r) => r.status === "new");
+  const act = storages.filter((x) => x.active);
+  const pUsed = act.reduce((a, x) => a + x.used_bytes, 0), pQuota = act.reduce((a, x) => a + x.quota_bytes, 0);
+  const activeToday = dlStats.filter((u) => Number(u.minutes_today) > 0);
+
+  const kpi = (href, ic, label, value, sub, extra) =>
+    h(href ? "a" : "div", { class: "kpi", href }, h("span", { class: "l" }, icon(ic), label), h("span", { class: "v" }, value), h("span", { class: "s" }, sub), extra || "");
+
+  const recent = [...titles].sort((a, b) => String(b.created_at).localeCompare(String(a.created_at))).slice(0, 6);
+  const top = [...dlStats].sort((a, b) => Number(b.minutes_period) - Number(a.minutes_period)).slice(0, 5);
+
+  $("main").replaceChildren(
+    h("div", { class: "phead" }, h("div", { class: "t" }, h("h2", {}, "Vue d'ensemble"),
+      h("p", {}, new Date().toLocaleDateString("fr-FR", { weekday: "long", day: "numeric", month: "long" })))),
+    h("div", { class: "kpis" },
+      kpi("#/catalogue", "film", "Catalogue", titles.length, `${plural(series, "série")} · ${plural(titles.length - series, "film")}${hidden ? ` · ${hidden} masqué${hidden > 1 ? "s" : ""}` : ""}`),
+      kpi("#/catalogue", "tv", "Vidéos", eps + (titles.length - series), `${Math.round(secs / 3600)} h de contenu · ${fmtBytes(bytes)}`),
+      storagesAvailable && act.length ? kpi("#/stockages", "db", "Stockage", pct(pUsed, pQuota) + " %", `${fmtBytes(pUsed)} / ${fmtBytes(pQuota)}`, meter(pUsed, pQuota)) : "",
+      requestsAvailable ? kpi("#/requetes", "inbox", "Requêtes", newReq.length, newReq.length ? "nouvelle" + (newReq.length > 1 ? "s" : "") + " à lire" : "rien de nouveau") : "",
+      usersAvailable ? kpi("#/utilisateurs", "users", "Utilisateurs", users.length, limitsAvailable ? `${activeToday.length} actif${activeToday.length > 1 ? "s" : ""} aujourd'hui` : "comptes") : "",
     ),
-    requestsAvailable ? collapsible(requestsCard(), "requests", false, () => {
-      const n = requests.filter((r) => r.status === "new").length;
-      return `${requests.length} requête${requests.length > 1 ? "s" : ""}${n ? ` · ${n} nouvelle${n > 1 ? "s" : ""}` : ""}`;
-    }) : "",
-    usersAvailable ? collapsible(usersCard(), "users", false, () => {
-      const n = users.filter((u) => u.status === "blocked").length;
-      return `${users.length} compte${users.length > 1 ? "s" : ""}${n ? ` · ${n} suspendu${n > 1 ? "s" : ""}` : ""}`;
-    }) : "",
-    limitsAvailable ? collapsible(downloadsCard(), "downloads", false, () => {
-      const today = dlStats.filter((u) => Number(u.minutes_today) > 0).length;
-      const heavy = dlStats.filter((u) => u.heavy).length;
-      return `${limits?.enabled === false ? "désactivée · " : ""}${today} actif${today > 1 ? "s" : ""} aujourd'hui${heavy ? ` · ${heavy} gros consommateur${heavy > 1 ? "s" : ""}` : ""}`;
-    }) : "",
-    storagesAvailable ? collapsible(storageCard(), "storage", false, () => {
-      const act = storages.filter((x) => x.active);
-      const u = act.reduce((a, x) => a + x.used_bytes, 0), q = act.reduce((a, x) => a + x.quota_bytes, 0);
-      return `${fmtBytes(u)} / ${fmtBytes(q)} · ${pct(u, q)} %`;
-    }) : "",
-    catsAvailable ? collapsible(categoriesCard(), "cats", false, () => `${categories.length} catégorie${categories.length > 1 ? "s" : ""}`) : "",
-    titles.length ? h("div", { class: "titles", style: { marginTop: "20px" } },
-      titles.map((t) => h("div", { class: "tile", onclick: () => renderEditor(t) },
-        h("div", { class: "poster", style: t.poster_url ? { backgroundImage: `url("${t.poster_url}")` } : {} },
-          t.poster_url ? "" : t.name,
-          h("span", { class: "badge" + (t.published ? "" : " off") }, t.kind === "film" ? "Film" : `${t.seasons.length} saison${t.seasons.length > 1 ? "s" : ""}`, t.published ? "" : " · masqué", t.featured ? " · ★ à la une" : "")),
-        h("div", { class: "name" }, t.name),
-      )),
-    ) : h("p", { class: "muted", style: { marginTop: "24px" } }, "Aucun contenu. Commence par ajouter une série ou un film."),
+    h("div", { class: "cols" },
+      h("div", { class: "stack" },
+        h("div", { class: "card" },
+          h("div", { class: "ptitle" }, h("h3", {}, "À compléter"), todo.length ? h("span", { class: "pill warn" }, todo.length) : "",
+            todo.length ? h("button", { class: "link", onclick: () => { setPref("cat.state", "incomplete"); go("#/catalogue"); } }, "Tout voir") : ""),
+          todo.length ? h("div", {}, ...todo.slice(0, 7).map(([t, s]) => h("a", { class: "li", href: "#/titre/" + t.id },
+            h("div", { class: "thumb", style: t.poster_url ? { backgroundImage: `url("${t.poster_url}")` } : {} }),
+            h("div", { class: "b" }, h("b", {}, t.name), h("small", {}, t.kind === "film" ? "Film" : "Série")),
+            h("div", { class: "issues" }, ...s.issues.map((i) => h("span", { class: "pill warn" }, i))),
+          ))) : h("div", { class: "empty" }, icon("check"), h("div", {}, "Tout est complet.")),
+        ),
+        h("div", { class: "card" },
+          h("div", { class: "ptitle" }, h("h3", {}, "Ajoutés récemment"), h("a", { href: "#/catalogue", class: "muted" }, "Catalogue →")),
+          recent.length ? h("div", { class: "titles", style: { gridTemplateColumns: "repeat(auto-fill,minmax(110px,1fr))" } }, ...recent.map(tile))
+            : h("div", { class: "empty" }, "Aucun contenu pour l'instant."),
+        ),
+      ),
+      h("div", { class: "stack" },
+        requestsAvailable ? h("div", { class: "card" },
+          h("div", { class: "ptitle" }, h("h3", {}, "Dernières requêtes"), h("a", { href: "#/requetes", class: "muted" }, "Tout →")),
+          requests.length ? h("div", {}, ...requests.slice(0, 5).map((r) => {
+            const u = users.find((x) => x.user_id === r.user_id);
+            return h("a", { class: "li", href: "#/requetes" },
+              h("div", { class: "b" }, h("b", {}, r.message), h("small", {}, `${REQ_KIND[r.kind] || r.kind} · ${u ? (u.name || u.email) : "compte supprimé"} · ${ago(r.created_at)}`)),
+              h("span", { class: "st " + r.status }, REQ_STATUS[r.status] || r.status));
+          })) : h("div", { class: "empty" }, "Aucune requête."),
+        ) : "",
+        limitsAvailable ? h("div", { class: "card" },
+          h("div", { class: "ptitle" }, h("h3", {}, "Plus gros consommateurs · 7 j"), h("a", { href: "#/telechargements", class: "muted" }, "Détail →")),
+          top.length ? h("div", {}, ...top.map((u) => h("div", { class: "li" },
+            h("div", { class: "avatar" }, (u.name || u.email || "?")[0].toUpperCase()),
+            h("div", { class: "b" }, h("b", {}, u.name || u.email || "—"), h("small", {}, `${fmtMin(u.minutes_period)} · ${plural(Number(u.files_period), "vidéo")}`)),
+            u.heavy ? h("span", { class: "pill off" }, "gros conso.") : "",
+          ))) : h("div", { class: "empty" }, "Aucun téléchargement."),
+        ) : "",
+        storagesAvailable && storages.length ? h("div", { class: "card" },
+          h("div", { class: "ptitle" }, h("h3", {}, "Stockages"), h("a", { href: "#/stockages", class: "muted" }, "Gérer →")),
+          ...storages.map((x) => h("div", { style: { marginTop: "10px", opacity: x.active ? 1 : .5 } },
+            h("div", { class: "row", style: { fontSize: "13px" } }, h("b", { style: { flex: 1 } }, x.name), h("span", { class: "muted" }, `${fmtBytes(x.used_bytes)} / ${fmtBytes(x.quota_bytes)}`)),
+            meter(x.used_bytes, x.quota_bytes))),
+        ) : "",
+      ),
+    ),
   );
+}
+
+// ---------------------------------------------------------------- catalogue
+function tile(t) {
+  const s = statsOf(t);
+  return h("a", { class: "tile", href: "#/titre/" + t.id },
+    h("div", { class: "poster" + (t.published ? "" : " hidden-t"), style: t.poster_url ? { backgroundImage: `url("${t.poster_url}")` } : {} },
+      t.poster_url ? "" : t.name,
+      h("div", { class: "tl" },
+        h("span", { class: "badge" }, t.kind === "film" ? "Film" : "Série"),
+        t.published ? "" : h("span", { class: "badge off" }, "masqué"),
+        t.featured ? h("span", { class: "badge", style: { color: "#f2c25c" } }, "★ une") : ""),
+      s.issues.length ? h("span", { class: "warnb", title: "Manque : " + s.issues.join(", ") }, icon("alert"), s.issues.length) : ""),
+    h("div", { class: "name", title: t.name }, t.name),
+    h("div", { class: "sub" }, subOf(t, s)),
+  );
+}
+
+async function quickToggle(t, key, rerender) {
+  const v = !t[key];
+  const { error } = await sb.from("titles").update({ [key]: v }).eq("id", t.id);
+  if (error) return fail(error);
+  t[key] = v;
+  rerender();
+  toast(key === "published" ? (v ? `« ${t.name} » visible dans l'app` : `« ${t.name} » masqué`) : (v ? `« ${t.name} » à la une` : `« ${t.name} » retiré de la une`));
+}
+
+let renderCatalogBody = null;
+function renderCatalog() {
+  setTop([{ label: "Catalogue" }], newBtns());
+  let kind = pref("cat.kind", "all"), state = pref("cat.state", "all"), sort = pref("cat.sort", "sort"), view = pref("cat.view", "grid");
+  const body = h("div");
+  const bar = h("div", { class: "toolbar" });
+  const count = h("span", { class: "count" });
+
+  const STATES = [["all", "Tous"], ["published", "Visibles"], ["hidden", "Masqués"], ["featured", "À la une"], ["incomplete", "À compléter"]];
+  const match = (t, st) => {
+    if (kind !== "all" && t.kind !== kind) return false;
+    if (st === "published" && !t.published) return false;
+    if (st === "hidden" && t.published) return false;
+    if (st === "featured" && !t.featured) return false;
+    if (st === "incomplete" && !statsOf(t).issues.length) return false;
+    const q = norm(catQuery).trim();
+    return !q || norm(`${t.name} ${t.year || ""}`).includes(q);
+  };
+  const sorter = {
+    sort: (a, b) => (a.sort - b.sort) || String(b.created_at).localeCompare(String(a.created_at)),
+    recent: (a, b) => String(b.created_at).localeCompare(String(a.created_at)),
+    name: (a, b) => a.name.localeCompare(b.name, "fr"),
+    size: (a, b) => statsOf(b).size - statsOf(a).size,
+  };
+
+  const renderBar = () => {
+    const chip = (label, on, onclick, n) => h("button", { class: "chip" + (on ? " on" : ""), onclick }, label, n != null ? h("span", { class: "n" }, n) : "");
+    const sortSel = h("select", {}, ...[["sort", "Ordre d'affichage"], ["recent", "Plus récents"], ["name", "Nom A→Z"], ["size", "Plus lourds"]]
+      .map(([v, l]) => h("option", { value: v, selected: v === sort }, l)));
+    sortSel.onchange = () => { sort = sortSel.value; setPref("cat.sort", sort); renderAll(); };
+    bar.replaceChildren(
+      h("div", { class: "seg" }, ...[["all", "Tout"], ["serie", "Séries"], ["film", "Films"]].map(([v, l]) =>
+        h("button", { class: kind === v ? "on" : "", onclick: () => { kind = v; setPref("cat.kind", v); renderAll(); } }, l))),
+      ...STATES.map(([v, l]) => chip(l, state === v, () => { state = v; setPref("cat.state", v); renderAll(); }, titles.filter((t) => match(t, v)).length)),
+      h("span", { class: "sp" }),
+      count, sortSel,
+      h("div", { class: "seg" },
+        h("button", { class: view === "grid" ? "on" : "", title: "Affiches", onclick: () => { view = "grid"; setPref("cat.view", view); renderAll(); } }, icon("grid")),
+        h("button", { class: view === "list" ? "on" : "", title: "Liste", onclick: () => { view = "list"; setPref("cat.view", view); renderAll(); } }, icon("list"))),
+    );
+  };
+
+  const renderBody = () => {
+    const list = titles.filter((t) => match(t, state)).sort(sorter[sort]);
+    count.textContent = plural(list.length, "titre");
+    if (!titles.length) return body.replaceChildren(h("div", { class: "card empty" }, icon("film"), h("div", {}, "Aucun contenu. Commence par ajouter une série ou un film."),
+      h("div", { class: "row", style: { justifyContent: "center", marginTop: "14px" } }, ...newBtns())));
+    if (!list.length) return body.replaceChildren(h("div", { class: "card empty" }, icon("search"), h("div", {}, "Aucun titre ne correspond."),
+      h("button", { class: "ghost sm", style: { marginTop: "12px" }, onclick: () => { kind = "all"; state = "all"; catQuery = ""; $("q").value = ""; setPref("cat.kind", "all"); setPref("cat.state", "all"); renderAll(); } }, "Réinitialiser les filtres")));
+    if (view === "grid") return body.replaceChildren(h("div", { class: "titles" }, ...list.map(tile)));
+    body.replaceChildren(h("div", { class: "tbl" }, h("table", {},
+      h("thead", {}, h("tr", {}, ...["Titre", "Type", "Contenu", "Taille", "À compléter", "Visible", "Une"].map((c) => h("th", {}, c)))),
+      h("tbody", {}, ...list.map((t) => {
+        const s = statsOf(t);
+        const sw = h("button", { class: "switch" + (t.published ? " on" : ""), role: "switch", "aria-checked": String(!!t.published), title: t.published ? "Masquer" : "Rendre visible",
+          onclick: (e) => { e.stopPropagation(); quickToggle(t, "published", renderAll); } });
+        const st = h("button", { class: "star" + (t.featured ? " on" : ""), title: t.featured ? "Retirer de la une" : "Mettre à la une",
+          onclick: (e) => { e.stopPropagation(); quickToggle(t, "featured", renderAll); } }, icon("star"));
+        return h("tr", { class: "click", onclick: () => go("#/titre/" + t.id) },
+          h("td", {}, h("div", { class: "nm" },
+            h("div", { class: "thumb", style: t.poster_url ? { backgroundImage: `url("${t.poster_url}")` } : {} }),
+            h("div", {}, h("b", {}, t.name), h("small", {}, [t.year, "ordre " + (t.sort ?? 0)].filter(Boolean).join(" · "))))),
+          h("td", {}, h("span", { class: "badge" }, t.kind === "film" ? "Film" : "Série")),
+          h("td", { class: "num" }, t.kind === "film" ? fmtDur(s.dur) || "—" : `${plural(s.seasons, "saison")} · ${s.eps} ép.`),
+          h("td", { class: "num" }, fmtBytes(s.size)),
+          h("td", {}, s.issues.length ? h("div", { class: "issues" }, ...s.issues.map((i) => h("span", { class: "pill warn" }, i))) : h("span", { class: "dim" }, "—")),
+          h("td", {}, sw), h("td", {}, st));
+      })))));
+  };
+  const renderAll = () => { renderBar(); renderBody(); };
+  renderCatalogBody = () => { if (curPage() === "catalogue") renderAll(); };
+  renderAll();
+  $("main").replaceChildren(
+    h("div", { class: "phead" }, h("div", { class: "t" }, h("h2", {}, "Catalogue"), h("p", {}, "Clique sur un titre pour le modifier. Raccourci : / pour rechercher."))),
+    bar, body);
 }
 
 function newTitle(kind) {
   return { _new: true, id: crypto.randomUUID(), kind, name: "", synopsis: "", year: new Date().getFullYear(), published: true, featured: false, sort: 0, poster_url: null, backdrop_url: null, video_key: null, duration_s: 0, size_bytes: 0, seasons: [] };
 }
 
+// ---------------------------------------------------------------- éditeur d'un titre
 function renderEditor(t) {
   const isFilm = t.kind === "film";
   const f = {
     name: h("input", { type: "text", value: t.name, placeholder: isFilm ? "Titre du film" : "Nom de la série" }),
     year: h("input", { type: "number", value: t.year || "", min: 1900, max: 2100 }),
     sort: h("input", { type: "number", value: t.sort ?? 0 }),
-    synopsis: h("textarea", { placeholder: "Résumé" }),
-    published: h("input", { type: "checkbox", checked: t.published }),
-    featured: h("input", { type: "checkbox", checked: t.featured }),
+    synopsis: h("textarea", { placeholder: "Résumé affiché dans la fiche" }),
+    published: h("button", { type: "button", class: "switch" + (t.published ? " on" : ""), role: "switch" }),
+    featured: h("button", { type: "button", class: "switch" + (t.featured ? " on" : ""), role: "switch" }),
   };
   f.synopsis.value = t.synopsis || "";
+  for (const k of ["published", "featured"]) {
+    f[k].checked = !!t[k];
+    f[k].onclick = () => { f[k].checked = !f[k].checked; f[k].classList.toggle("on", f[k].checked); markDirty(); };
+  }
   let pendingVideo = null; // nouveau film : vidéo choisie avant l'enregistrement
   const err = h("div", { class: "err" });
 
+  // --- état « modifié »
+  let dirty = false;
+  const state = h("span", { class: "state" });
+  const showState = () => {
+    state.className = "state" + (dirty ? " dirty" : "");
+    state.replaceChildren(dirty ? h("span", { class: "dot" }) : "", t._new ? "Nouveau — pas encore enregistré" : dirty ? "Modifications non enregistrées" : "Tout est enregistré");
+  };
+  const markDirty = () => { dirty = true; showState(); };
+  editorDirty = () => curPage() === "titre" || curPage() === "nouveau" ? dirty || !!(t._new && (f.name.value.trim() || pendingVideo)) : false;
+  for (const k of ["name", "year", "sort", "synopsis"]) f[k].addEventListener("input", markDirty);
+  leaveGuard = () => {
+    if (!dirty && !(t._new && (f.name.value.trim() || pendingVideo))) { leaveGuard = null; return true; }
+    if (window.confirm("Quitter sans enregistrer les modifications ?")) { leaveGuard = null; return true; }
+    history.replaceState(null, "", t._new ? "#/nouveau/" + t.kind : "#/titre/" + t.id);
+    return false;
+  };
+
   const imgBox = (kind) => {
     const key = kind === "poster" ? "poster_url" : "backdrop_url";
-    const box = h("div", { class: "imgbox " + kind, title: "Changer l'image" }, t[key] ? "" : (kind === "poster" ? "Affiche\n2:3" : "Image 16:9"));
+    const box = h("div", { class: "imgbox " + kind, title: "Changer l'image" }, t[key] ? "" : (kind === "poster" ? "Affiche\n2:3" : "Image 16:9\n(bannière)"));
     if (t[key]) box.style.backgroundImage = `url("${t[key]}")`;
-    box.onclick = async () => {
-      const [file] = await pickFiles("image/*");
-      if (!file) return;
+    const set = async (file) => {
+      if (!file || !/^image\//.test(file.type)) return;
       box.textContent = "Envoi…";
       try {
         t[key] = await uploadImage(file, t.id, kind);
@@ -482,6 +1074,10 @@ function renderEditor(t) {
         if (!t._new) { await save({ [key]: t[key] }); toast("Image enregistrée"); }
       } catch (e) { box.textContent = "Erreur"; fail(e); }
     };
+    box.onclick = async () => set((await pickFiles("image/*"))[0]);
+    box.ondragover = (e) => { e.preventDefault(); box.style.borderColor = "var(--grey)"; };
+    box.ondragleave = () => (box.style.borderColor = "");
+    box.ondrop = (e) => { e.preventDefault(); box.style.borderColor = ""; set(e.dataTransfer.files[0]); };
     return box;
   };
 
@@ -492,7 +1088,7 @@ function renderEditor(t) {
   }
 
   // --- vidéo du film
-  const videoInfo = h("p", { class: "muted" });
+  const videoInfo = h("p", { class: "muted", style: { fontSize: "13px", marginBottom: "10px", wordBreak: "break-all" } });
   const showVideoInfo = () => {
     videoInfo.textContent = pendingVideo ? `Prêt à envoyer : ${pendingVideo.name} (${fmtSize(pendingVideo.size)})`
       : t.video_key ? `${t.video_key} · ${fmtSize(t.size_bytes)} · ${fmtDur(t.duration_s)}` : "Aucune vidéo";
@@ -522,7 +1118,7 @@ function renderEditor(t) {
       sort: Number(f.sort.value) || 0, published: f.published.checked, featured: f.featured.checked,
       poster_url: t.poster_url, backdrop_url: t.backdrop_url,
     };
-    if (!row.name) return (err.textContent = "Le nom est obligatoire.");
+    if (!row.name) { f.name.focus(); return (err.textContent = "Le nom est obligatoire."); }
     saveBtn.disabled = true;
     try {
       if (t._new) {
@@ -541,62 +1137,104 @@ function renderEditor(t) {
         delete t._new;
         titles.unshift(t);
         toast(isFilm ? "Film ajouté" : "Série créée — ajoute une saison");
-        renderEditor(t);
+        leaveGuard = null;
+        history.replaceState(null, "", "#/titre/" + t.id);
+        route();
         return;
       }
       await save(row);
+      dirty = false; showState(); renderNav();
+      $("crumbs").lastElementChild.textContent = t.name;
       toast("Enregistré");
     } catch (e) { err.textContent = e.message; }
     saveBtn.disabled = false;
-  } }, t._new ? (isFilm ? "Envoyer et créer le film" : "Créer la série") : "Enregistrer");
+  } }, icon("save"), t._new ? (isFilm ? "Envoyer et créer le film" : "Créer la série") : "Enregistrer", h("kbd", { style: { color: "#555", borderColor: "#999" } }, "Ctrl S"));
 
   const delBtn = !t._new && h("button", { class: "danger", onclick: async () => {
     const n = t.seasons.reduce((a, s) => a + s.episodes.length, 0);
-    if (!confirm(`Supprimer « ${t.name} »${n ? ` et ses ${n} épisodes` : ""} ? Les vidéos seront effacées du stockage.`)) return;
+    if (!(await uiConfirm(`Supprimer « ${t.name} »${n ? ` et ses ${n} épisodes` : ""} ? Les vidéos seront effacées du stockage.`, { title: "Supprimer ce titre", ok: "Supprimer", danger: true }))) return;
     const vids = [videoOf(t), ...t.seasons.flatMap((s) => s.episodes.map(videoOf))];
     const { error } = await sb.from("titles").delete().eq("id", t.id);
     if (error) return fail(error);
     storeDelete(vids);
     titles = titles.filter((x) => x !== t);
     toast("Supprimé");
-    renderList();
-  } }, "Supprimer");
+    leaveGuard = null;
+    go("#/catalogue");
+  } }, icon("trash"), "Supprimer");
 
-  const filmDrop = isFilm && dropZone("Glisse la vidéo ici ou clique pour choisir", pickFilmVideo, false);
+  const filmDrop = isFilm && dropZone(t.video_key ? "Remplacer la vidéo : glisse-la ici ou clique" : "Glisse la vidéo ici ou clique pour choisir", pickFilmVideo, false);
+  const st = statsOf(t);
+
+  setTop([{ label: "Catalogue", href: "#/catalogue" }, { label: t._new ? (isFilm ? "Nouveau film" : "Nouvelle série") : t.name }],
+    t._new ? [] : [h("button", { class: "ghost sm", onclick: () => go("#/catalogue") }, icon("back"), h("span", { class: "lbl" }, "Retour"))]);
+
+  const toggleRow = (sw, title, sub) => h("div", { class: "toggle-row" }, h("div", {}, h("b", {}, title), h("small", {}, sub)), sw);
 
   $("main").replaceChildren(
-    h("div", { class: "row", style: { marginTop: "20px" } },
-      h("button", { class: "link", onclick: renderList }, "← Catalogue"),
-    ),
-    h("h2", {}, t._new ? (isFilm ? "Nouveau film" : "Nouvelle série") : t.name),
-    h("div", { class: "card" },
-      h("label", {}, "Nom"), f.name,
-      h("div", { class: "grid2" },
-        h("div", {}, h("label", {}, "Année"), f.year),
-        h("div", {}, h("label", {}, "Ordre d'affichage (petit = en premier)"), f.sort),
+    h("div", { class: "phead" }, h("div", { class: "t" },
+      h("div", { class: "row", style: { gap: "8px", marginBottom: "4px" } },
+        h("span", { class: "badge" }, isFilm ? "Film" : "Série"),
+        t._new ? "" : h("span", { class: "pill " + (t.published ? "ok" : "off") }, t.published ? "visible" : "masqué"),
+        t.featured ? h("span", { class: "pill feat" }, "★ à la une") : "",
+        ...st.issues.map((i) => h("span", { class: "pill warn" }, "manque : " + i))),
+      h("h2", {}, t._new ? (isFilm ? "Nouveau film" : "Nouvelle série") : t.name))),
+    h("div", { class: "ed" },
+      h("div", {},
+        h("div", { class: "card" },
+          h("div", { class: "ptitle" }, h("h3", {}, "Informations")),
+          h("label", { style: { marginTop: 0 } }, "Nom"), f.name,
+          h("div", { class: "grid2" },
+            h("div", {}, h("label", {}, "Année"), f.year),
+            h("div", {}, h("label", {}, "Ordre d'affichage (petit = en premier)"), f.sort),
+          ),
+          h("label", {}, "Résumé"), f.synopsis,
+        ),
+        isFilm ? h("div", { class: "card" }, h("div", { class: "ptitle" }, h("h3", {}, "Vidéo")), videoInfo, filmDrop) : "",
+        !isFilm && !t._new ? seasonsCard(t) : "",
+        !isFilm && t._new ? h("div", { class: "card empty" }, icon("tv"), h("div", {}, "Les saisons et épisodes s'ajoutent après la création de la série.")) : "",
       ),
-      h("label", {}, "Résumé"), f.synopsis,
-      h("label", {}, "Images"),
-      h("div", { class: "imgs" }, imgBox("poster"), imgBox("backdrop")),
-      h("label", { style: { display: "flex", alignItems: "center", gap: "8px", textTransform: "none", letterSpacing: 0, fontSize: "14px", color: "var(--text)" } },
-        f.published, "Visible dans l'app"),
-      h("label", { style: { display: "flex", alignItems: "center", gap: "8px", textTransform: "none", letterSpacing: 0, fontSize: "14px", color: "var(--text)", marginTop: "8px" } },
-        f.featured, "À la une (grande bannière de l'accueil)"),
-      catsAvailable && categories.length ? h("div", {},
-        h("label", {}, "Catégories"),
-        t._new ? h("p", { class: "muted" }, "Disponible après la création.") : titleCategoryChips(t),
-      ) : "",
-      isFilm && h("div", {}, h("label", {}, "Vidéo"), videoInfo, filmDrop),
-      h("div", { class: "row", style: { marginTop: "20px" } }, saveBtn, h("span", { class: "sp", style: { flex: 1 } }), delBtn),
-      err,
+      h("div", {},
+        h("div", { class: "card" },
+          h("div", { class: "ptitle" }, h("h3", {}, "Visuels")),
+          h("div", { class: "imgs" }, imgBox("poster"), imgBox("backdrop")),
+          h("p", { class: "muted", style: { fontSize: "12px", marginTop: "8px" } }, "Clique ou glisse une image. Redimensionnée automatiquement."),
+        ),
+        h("div", { class: "card" },
+          h("div", { class: "ptitle" }, h("h3", {}, "Publication")),
+          toggleRow(f.published, "Visible dans l'app", "Masqué = invisible pour les utilisateurs"),
+          toggleRow(f.featured, "À la une", "Grande bannière de l'accueil (image 16:9 conseillée)"),
+        ),
+        catsAvailable && categories.length ? h("div", { class: "card" },
+          h("div", { class: "ptitle" }, h("h3", {}, "Catégories")),
+          t._new ? h("p", { class: "muted" }, "Disponible après la création.") : titleCategoryChips(t),
+        ) : "",
+        t._new ? "" : h("div", { class: "card" },
+          h("div", { class: "ptitle" }, h("h3", {}, "En chiffres")),
+          h("div", { class: "facts" },
+            isFilm ? "" : h("div", {}, h("b", {}, st.seasons), h("small", {}, "saisons")),
+            isFilm ? "" : h("div", {}, h("b", {}, st.eps), h("small", {}, "épisodes")),
+            h("div", {}, h("b", {}, fmtDur(st.dur) || "—"), h("small", {}, "durée")),
+            h("div", {}, h("b", {}, fmtBytes(st.size)), h("small", {}, "taille")),
+            !isFilm && st.noSyn ? h("div", { style: { gridColumn: "1/-1" } }, h("b", {}, st.noSyn), h("small", {}, "épisodes sans résumé")) : "",
+          ),
+          h("p", { class: "dim", style: { fontSize: "11px", marginTop: "10px" } }, "Ajouté " + ago(t.created_at)),
+        ),
+      ),
     ),
-    !isFilm && !t._new ? seasonsCard(t) : "",
+    h("div", { class: "savebar" }, state, err, delBtn || "", saveBtn),
   );
+  showState();
   if (t._new) f.name.focus();
+  editorSave = () => saveBtn.click();
 }
+let editorSave = null;
+document.addEventListener("keydown", (e) => {
+  if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "s" && ["titre", "nouveau"].includes(curPage())) { e.preventDefault(); editorSave?.(); }
+});
 
 function dropZone(text, onFiles, multiple) {
-  const z = h("div", { class: "drop" }, text);
+  const z = h("div", { class: "drop" }, icon("upload"), text);
   z.onclick = async () => onFiles(await pickFiles("video/*,.mkv", multiple));
   z.ondragover = (e) => { e.preventDefault(); z.classList.add("over"); };
   z.ondragleave = () => z.classList.remove("over");
@@ -606,33 +1244,6 @@ function dropZone(text, onFiles, multiple) {
     if (files.length) onFiles(multiple ? files : files.slice(0, 1));
   };
   return z;
-}
-
-// ---------------------------------------------------------------- panneaux repliables
-/**
- * Rend une carte repliable : clic sur son titre (h3). L'état est mémorisé dans le navigateur.
- * `summary()` affiche un résumé à côté du titre quand la carte est fermée.
- */
-function collapsible(card, id, defaultOpen, summary) {
-  card.classList.add("coll");
-  let open = defaultOpen;
-  try { const v = localStorage.getItem("xyd.panel." + id); if (v !== null) open = v === "1"; } catch {}
-  card.classList.toggle("open", open);
-  const decorate = () => {
-    const head = card.firstElementChild;
-    if (!head || head.querySelector(".sum")) return;
-    const h3 = head.querySelector("h3");
-    if (h3 && summary) h3.after(h("span", { class: "sum" }, summary()));
-  };
-  decorate();
-  new MutationObserver(decorate).observe(card, { childList: true });
-  card.addEventListener("click", (e) => {
-    if (!e.target.closest(".row:first-child > h3")) return;
-    open = !card.classList.contains("open");
-    card.classList.toggle("open", open);
-    try { localStorage.setItem("xyd.panel." + id, open ? "1" : "0"); } catch {}
-  });
-  return card;
 }
 
 // ---------------------------------------------------------------- utilisateurs
@@ -650,8 +1261,9 @@ async function usersFn(body) {
 }
 
 function usersCard() {
-  const card = h("div", { class: "card" });
+  const card = h("div");
   const me = $("who").textContent;
+  let q = "", filter = "all";
 
   async function saveSettings(patch) {
     const value = { ...signupSettings, ...patch };
@@ -665,15 +1277,22 @@ function usersCard() {
     const { error } = await sb.from("profiles").update({ status }).eq("user_id", u.user_id);
     if (error) return fail(error);
     u.status = status;
-    render();
+    renderList(); renderNav();
     toast(status === "active" ? "Compte réactivé" : "Compte suspendu");
   }
 
-  const render = () => {
+  const listBox = h("div");
+  const renderList = () => {
+    const nq = norm(q).trim();
+    const list = users.filter((u) => (filter === "all" || u.status === filter) && (!nq || norm(`${u.name} ${u.email}`).includes(nq)));
+    listBox.replaceChildren(list.length ? h("div", {}, ...list.map((u) => userRow(u))) : h("div", { class: "empty" }, "Aucun compte."));
+  };
+
+  const settingsCard = () => {
     const st = signupSettings;
     const notify = h("input", { type: "checkbox", checked: st.notify !== false });
     notify.onchange = () => saveSettings({ notify: notify.checked });
-    const recipient = h("input", { type: "email", value: st.recipient || "", placeholder: "ton adresse mail", style: { maxWidth: "280px" } });
+    const recipient = h("input", { type: "email", value: st.recipient || "", placeholder: "ton adresse mail" });
     recipient.onchange = () => saveSettings({ recipient: recipient.value.trim() || null });
     const fields = h("div", { class: "fields" }, ...Object.entries(FIELD_LABEL).map(([k, label]) => {
       const c = h("input", { type: "checkbox", checked: (st.fields || []).includes(k) });
@@ -685,7 +1304,7 @@ function usersCard() {
       return h("label", { class: "check" }, c, label);
     }));
     const testStatus = h("span", { class: "muted", style: { fontSize: "13px" } });
-    const test = h("button", { class: "ghost", onclick: async () => {
+    const test = h("button", { class: "ghost sm", onclick: async () => {
       testStatus.textContent = "Envoi…"; testStatus.style.color = "";
       try {
         const { data, error } = await sb.functions.invoke("notify-signup", { body: { test: true } });
@@ -694,19 +1313,14 @@ function usersCard() {
         testStatus.style.color = data.ok ? "var(--ok)" : "var(--danger)";
       } catch (e) { testStatus.textContent = "✗ " + e.message; testStatus.style.color = "var(--danger)"; }
     } }, "Envoyer un mail de test");
-
-    card.replaceChildren(
-      h("div", { class: "row" }, h("h3", { style: { flex: 1 } }, "Utilisateurs")),
-      h("div", { class: "sform", style: { marginTop: "12px" } },
-        h("b", {}, "Mail à chaque inscription"),
-        h("label", { class: "check", style: { display: "flex", marginTop: "10px" } }, notify, "M'informer par mail de chaque nouvelle inscription"),
-        h("label", {}, "Destinataire"), recipient,
-        h("label", {}, "Informations dans le mail"), fields,
-        h("div", { class: "row", style: { marginTop: "12px" } }, test, testStatus),
-        h("p", { class: "muted", style: { fontSize: "12px", marginTop: "10px" } },
-          "Les mots de passe ne sont jamais envoyés ni conservés en clair. Pour un proche, utilise « Mot de passe » ci-dessous : tu le choisis et tu le lui donnes."),
-      ),
-      h("div", { style: { marginTop: "8px" } }, ...users.map((u) => userRow(u))),
+    return h("div", { class: "card" },
+      h("div", { class: "ptitle" }, h("h3", {}, "Mail à chaque inscription")),
+      h("label", { class: "check" }, notify, "M'informer par mail de chaque nouvelle inscription"),
+      h("label", {}, "Destinataire"), recipient,
+      h("label", {}, "Informations dans le mail"), fields,
+      h("div", { class: "row", style: { marginTop: "14px" } }, test, testStatus),
+      h("p", { class: "muted", style: { fontSize: "12px", marginTop: "12px" } },
+        "Les mots de passe ne sont jamais envoyés ni conservés en clair. Pour un proche, utilise « Mot de passe » sur son compte : tu le choisis et tu le lui donnes."),
     );
   };
 
@@ -714,29 +1328,43 @@ function usersCard() {
     const self = u.email === me;
     const date = new Date(u.created_at).toLocaleDateString("fr-FR", { day: "2-digit", month: "short", year: "numeric" });
     return h("div", { class: "user" },
-      h("div", { class: "who" }, h("b", {}, u.name || "—"), self ? h("span", { class: "muted" }, " (toi)") : "", h("small", {}, `${u.email} · ${date}`)),
+      h("div", { class: "avatar" }, (u.name || u.email || "?")[0].toUpperCase()),
+      h("div", { class: "who" }, h("b", {}, u.name || "—"), self ? h("span", { class: "muted" }, " (toi)") : "", h("small", {}, `${u.email} · inscrit le ${date}`)),
       h("span", { class: "st " + u.status }, STATUS_LABEL[u.status] || u.status),
       !self && u.status === "active" ? h("button", { class: "link", onclick: () => setStatus(u, "blocked") }, "Suspendre") : "",
       !self && u.status === "blocked" ? h("button", { class: "link", onclick: () => setStatus(u, "active") }, "Réactiver") : "",
       h("button", { class: "link", title: "Choisir un nouveau mot de passe pour ce compte", onclick: async () => {
-        const pw = prompt(`Nouveau mot de passe pour ${u.email} (6 caractères minimum) :`);
-        if (!pw) return;
-        if (pw.length < 6) return toast("6 caractères minimum");
-        if (prompt("Confirme le mot de passe :") !== pw) return toast("Les deux saisies ne correspondent pas");
-        try { await usersFn({ action: "set-password", user_id: u.user_id, password: pw }); toast("Mot de passe modifié"); }
+        const r = await uiForm({
+          title: "Nouveau mot de passe", text: `Pour ${u.email}. Tu le choisis et tu le lui transmets.`, ok: "Modifier",
+          fields: [{ key: "a", label: "Mot de passe (6 caractères minimum)", type: "password" }, { key: "b", label: "Confirmation", type: "password" }],
+          validate: (v) => v.a.length < 6 ? "6 caractères minimum" : v.a !== v.b ? "Les deux saisies ne correspondent pas" : null,
+        });
+        if (!r) return;
+        try { await usersFn({ action: "set-password", user_id: u.user_id, password: r.a }); toast("Mot de passe modifié"); }
         catch (e) { fail(e); }
       } }, "Mot de passe"),
       !self ? h("button", { class: "link", style: { color: "var(--danger)" }, onclick: async () => {
-        if (!confirm(`Supprimer définitivement le compte ${u.email} ? Sa progression de lecture sera effacée.`)) return;
+        if (!(await uiConfirm(`Supprimer définitivement le compte ${u.email} ? Sa progression de lecture sera effacée.`, { title: "Supprimer le compte", ok: "Supprimer", danger: true }))) return;
         try {
           await usersFn({ action: "delete", user_id: u.user_id });
-          users = users.filter((x) => x !== u); render(); toast("Compte supprimé");
+          users = users.filter((x) => x !== u); renderList(); renderNav(); toast("Compte supprimé");
         } catch (e) { fail(e); }
       } }, "Supprimer") : "",
     );
   }
 
-  render();
+  const search = h("input", { type: "search", placeholder: "Nom ou email…", style: { maxWidth: "260px" } });
+  search.oninput = () => { q = search.value; renderList(); };
+  const chips = h("div", { class: "row", style: { gap: "6px" } });
+  const renderChips = () => chips.replaceChildren(...[["all", "Tous", users.length], ["active", "Actifs", users.filter((u) => u.status === "active").length], ["blocked", "Suspendus", users.filter((u) => u.status === "blocked").length]]
+    .map(([v, l, n]) => h("button", { class: "chip" + (filter === v ? " on" : ""), onclick: () => { filter = v; renderChips(); renderList(); } }, l, h("span", { class: "n" }, n))));
+  renderChips();
+  renderList();
+  card.replaceChildren(
+    h("div", { class: "cols", style: { marginTop: 0 } },
+      h("div", { class: "card" }, h("div", { class: "toolbar", style: { marginBottom: "6px" } }, chips, h("span", { class: "sp" }), search), listBox),
+      settingsCard()),
+  );
   return card;
 }
 
@@ -755,27 +1383,26 @@ function requestsCard() {
     const { error } = await sb.from("user_requests").update(patch).eq("id", r.id);
     if (error) return fail(error);
     Object.assign(r, patch);
-    render();
+    render(); renderNav();
     if (msg) toast(msg);
   }
 
   const render = () => {
     const who = byUser();
-    const list = requests.filter((r) =>
-      (filter === "all" || (filter === "done" ? r.status === "done" : r.status !== "done")) && (!kind || r.kind === kind));
-    const chip = (label, on, onclick) => h("button", { class: "chip" + (on ? " on" : ""), onclick }, label);
+    const inFilter = (r, fl) => fl === "all" || (fl === "done" ? r.status === "done" : r.status !== "done");
+    const list = requests.filter((r) => inFilter(r, filter) && (!kind || r.kind === kind));
+    const chip = (label, on, onclick, n) => h("button", { class: "chip" + (on ? " on" : ""), onclick }, label, n != null ? h("span", { class: "n" }, n) : "");
     card.replaceChildren(
-      h("div", { class: "row" }, h("h3", { style: { flex: 1 } }, "Requêtes")),
-      h("div", { class: "row", style: { marginTop: "12px", gap: "8px" } },
-        chip("À traiter", filter === "open", () => { filter = "open"; render(); }),
-        chip("Traitées", filter === "done", () => { filter = "done"; render(); }),
-        chip("Toutes", filter === "all", () => { filter = "all"; render(); }),
-        h("span", { style: { width: "12px" } }),
+      h("div", { class: "toolbar" },
+        chip("À traiter", filter === "open", () => { filter = "open"; render(); }, requests.filter((r) => inFilter(r, "open")).length),
+        chip("Traitées", filter === "done", () => { filter = "done"; render(); }, requests.filter((r) => inFilter(r, "done")).length),
+        chip("Toutes", filter === "all", () => { filter = "all"; render(); }, requests.length),
+        h("span", { class: "sp" }),
         chip("Tous types", !kind, () => { kind = ""; render(); }),
         ...Object.entries(REQ_KIND).map(([k, label]) => chip(label, kind === k, () => { kind = kind === k ? "" : k; render(); })),
       ),
-      list.length ? h("div", { style: { marginTop: "8px" } }, ...list.map((r) => requestRow(r, who[r.user_id])))
-        : h("p", { class: "muted", style: { marginTop: "16px" } }, "Aucune requête ici."),
+      list.length ? h("div", {}, ...list.map((r) => requestRow(r, who[r.user_id])))
+        : h("div", { class: "empty" }, icon("inbox"), h("div", {}, "Aucune requête ici.")),
     );
   };
 
@@ -791,17 +1418,17 @@ function requestsCard() {
       r.status !== "seen" && r.status !== "done" ? h("button", { class: "link", onclick: () => update(r, { status: "seen" }) }, "Marquer vue") : "",
       r.status !== "done" ? h("button", { class: "link", onclick: () => update(r, { status: "done" }, "Requête traitée") }, "Traitée") : "",
       r.status === "done" ? h("button", { class: "link", onclick: () => update(r, { status: "seen" }) }, "Rouvrir") : "",
-      h("button", { class: "link", onclick: () => {
-        const txt = prompt("Réponse affichée dans l'app (vide = aucune réponse) :", r.reply || "");
+      h("button", { class: "link", onclick: async () => {
+        const txt = await uiPrompt(r.reply ? "Modifier la réponse" : "Répondre", r.reply || "", { type: "textarea", text: "Affichée dans l'app. Vide = aucune réponse.\n\n« " + r.message.slice(0, 200) + (r.message.length > 200 ? "…" : "") + " »" });
         if (txt === null) return;
         const reply = txt.trim() || null;
         update(r, reply ? { reply, status: r.status === "new" ? "seen" : r.status } : { reply }, reply ? "Réponse enregistrée" : "Réponse retirée");
       } }, r.reply ? "Modifier la réponse" : "Répondre"),
       h("button", { class: "link", style: { color: "var(--danger)" }, onclick: async () => {
-        if (!confirm("Supprimer cette requête ?")) return;
+        if (!(await uiConfirm("Supprimer cette requête ?", { ok: "Supprimer", danger: true }))) return;
         const { error } = await sb.from("user_requests").delete().eq("id", r.id);
         if (error) return fail(error);
-        requests = requests.filter((x) => x !== r); render(); toast("Requête supprimée");
+        requests = requests.filter((x) => x !== r); render(); renderNav(); toast("Requête supprimée");
       } }, "Supprimer"),
       h("div", { class: "msg" }, r.message),
       r.reply ? h("div", { class: "reply" }, "↳ Ta réponse : ", r.reply) : "",
@@ -818,14 +1445,14 @@ const fmtMin = (m) => { m = Math.round(Number(m) || 0); return m >= 60 ? `${Math
 
 /** Réglages de la limitation + consommation par personne (détection des gros consommateurs). */
 function downloadsCard() {
-  const card = h("div", { class: "card" });
+  const card = h("div");
   let days = 7;
 
   async function reload() {
     const { data, error } = await sb.rpc("admin_download_stats", { p_days: days });
     if (error) return fail(error);
     dlStats = data || [];
-    render();
+    render(); renderNav();
   }
 
   async function setOverride(u, value) {
@@ -865,7 +1492,7 @@ function downloadsCard() {
       for (const i of form.querySelectorAll("input[data-key]")) {
         if (i.value === "") continue;
         const n = Number(i.value) * Number(i.dataset.scale);
-        if (!Number.isFinite(n) || n < 0) return toast("Valeur invalide : " + i.previousSibling.textContent);
+        if (!Number.isFinite(n) || n < 0) return toast("Valeur invalide : " + i.previousSibling.textContent, 4000, "e");
         value[i.dataset.key] = Math.round(n * 100) / 100;
       }
       save.disabled = true;
@@ -875,40 +1502,52 @@ function downloadsCard() {
       limits = value; toast("Limitation enregistrée"); reload();
     } }, "Enregistrer");
 
-    const period = h("select", { style: { maxWidth: "160px" } },
+    const period = h("select", { style: { width: "auto" } },
       ...[[1, "Aujourd'hui"], [7, "7 jours"], [30, "30 jours"]].map(([d, l]) => h("option", { value: d, selected: d === days }, l)));
     period.onchange = () => { days = Number(period.value); reload(); };
 
+    const sorted = [...dlStats].sort((a, b) => Number(b.minutes_period) - Number(a.minutes_period));
+    const heavy = dlStats.filter((u) => u.heavy).length;
+    const today = dlStats.filter((u) => Number(u.minutes_today) > 0);
     card.replaceChildren(
-      h("div", { class: "row" }, h("h3", { style: { flex: 1 } }, "Téléchargements"), period,
-        h("button", { class: "ghost", onclick: reload }, "Actualiser")),
-      h("div", { class: "sform", style: { marginTop: "12px" } },
-        h("b", {}, "Limitation multicouche"),
-        h("p", { class: "muted", style: { fontSize: "12px", marginTop: "4px" } },
-          "Quota personnel en durée de vidéo, budget journalier des stockages facturables (réglé dans chaque stockage), part équitable, anti-rafale, gros consommateurs. Les reprises d'une même vidéo ne sont pas recomptées. Jour = jour UTC."),
-        h("label", { class: "check", style: { display: "flex", marginTop: "10px" } }, enabled, "Limitation active"),
-        h("label", { class: "check", style: { display: "flex", marginTop: "6px" } }, exempt, "Les admins ne sont pas limités par le quota personnel (le budget des stockages s'applique toujours)"),
-        form,
-        h("div", { class: "row", style: { marginTop: "12px" } }, save),
+      h("div", { class: "kpis", style: { marginBottom: "16px" } },
+        h("div", { class: "kpi" }, h("span", { class: "l" }, "Limitation"), h("span", { class: "v", style: { color: L.enabled === false ? "var(--danger)" : "var(--ok)" } }, L.enabled === false ? "Off" : "Active"), h("span", { class: "s" }, "jour = jour UTC")),
+        h("div", { class: "kpi" }, h("span", { class: "l" }, "Actifs aujourd'hui"), h("span", { class: "v" }, today.length), h("span", { class: "s" }, fmtMin(today.reduce((a, u) => a + Number(u.minutes_today), 0)) + " téléchargées")),
+        h("div", { class: "kpi" }, h("span", { class: "l" }, "Gros consommateurs"), h("span", { class: "v", style: { color: heavy ? "var(--danger)" : "" } }, heavy), h("span", { class: "s" }, "quota réduit")),
       ),
-      h("p", { class: "muted", style: { fontSize: "12px", marginTop: "12px" } },
-        "Quota perso : vide = réglage global, 0 = téléchargements bloqués. Trié par consommation sur la période."),
-      h("div", { style: { marginTop: "4px" } }, ...dlStats.map((u) => {
-        const ov = h("input", { type: "number", min: "0", step: "30", value: u.daily_override ?? "", placeholder: "défaut", title: "Minutes de vidéo par jour", style: { width: "92px", padding: "6px 8px" } });
-        ov.onchange = () => setOverride(u, ov.value);
-        const quota = Number(u.daily_quota) || 0;
-        return h("div", { class: "user" },
-          h("div", { class: "who" },
-            h("b", {}, u.name || "—"), u.heavy ? h("span", { class: "st blocked", style: { marginLeft: "6px" } }, "gros consommateur") : "",
-            h("small", {}, u.email || ""),
-            h("small", {}, `Aujourd'hui : ${fmtMin(u.minutes_today)} / ${quota > 0 ? fmtMin(quota) : "bloqué"} · ${u.files_today} vidéo${u.files_today > 1 ? "s" : ""}` +
-              (Number(u.billable_bytes_today) ? ` · ${fmtBytes(Number(u.billable_bytes_today))} sur stockage facturable` : "") +
-              (Number(u.refused_today) ? ` · ${u.refused_today} refus` : "")),
-            h("small", {}, `${days === 1 ? "Aujourd'hui" : days + " jours"} : ${fmtMin(u.minutes_period)} · ${u.files_period} vidéo${u.files_period > 1 ? "s" : ""} · ${fmtBytes(Number(u.bytes_period))}`),
-          ),
-          h("span", { class: "muted", style: { fontSize: "12px" } }, "min/jour"), ov,
-        );
-      })),
+      h("div", { class: "cols", style: { marginTop: 0 } },
+        h("div", { class: "card" },
+          h("div", { class: "ptitle" }, h("h3", {}, "Consommation par personne"), period, h("button", { class: "ghost sm", onclick: reload }, "Actualiser")),
+          h("p", { class: "muted", style: { fontSize: "12px" } }, "Quota perso (min/jour) : vide = réglage global, 0 = téléchargements bloqués."),
+          sorted.length ? h("div", { style: { marginTop: "4px" } }, ...sorted.map((u) => {
+            const ov = h("input", { type: "number", min: "0", step: "30", value: u.daily_override ?? "", placeholder: "défaut", title: "Minutes de vidéo par jour", style: { width: "92px", padding: "6px 8px" } });
+            ov.onchange = () => setOverride(u, ov.value);
+            const quota = Number(u.daily_quota) || 0;
+            return h("div", { class: "user" },
+              h("div", { class: "avatar" }, (u.name || u.email || "?")[0].toUpperCase()),
+              h("div", { class: "who" },
+                h("b", {}, u.name || "—"), u.heavy ? h("span", { class: "st blocked", style: { marginLeft: "6px" } }, "gros consommateur") : "",
+                h("small", {}, u.email || ""),
+                h("small", {}, `Aujourd'hui : ${fmtMin(u.minutes_today)} / ${quota > 0 ? fmtMin(quota) : "bloqué"} · ${u.files_today} vidéo${u.files_today > 1 ? "s" : ""}` +
+                  (Number(u.billable_bytes_today) ? ` · ${fmtBytes(Number(u.billable_bytes_today))} sur stockage facturable` : "") +
+                  (Number(u.refused_today) ? ` · ${u.refused_today} refus` : "")),
+                quota > 0 ? meter(Number(u.minutes_today), quota) : "",
+                h("small", { style: { marginTop: "4px" } }, `${days === 1 ? "Aujourd'hui" : days + " jours"} : ${fmtMin(u.minutes_period)} · ${u.files_period} vidéo${u.files_period > 1 ? "s" : ""} · ${fmtBytes(Number(u.bytes_period))}`),
+              ),
+              h("span", { class: "muted", style: { fontSize: "12px" } }, "min/jour"), ov,
+            );
+          })) : h("div", { class: "empty" }, "Aucune donnée sur la période."),
+        ),
+        h("div", { class: "card" },
+          h("div", { class: "ptitle" }, h("h3", {}, "Réglages de la limitation")),
+          h("p", { class: "muted", style: { fontSize: "12px" } },
+            "Quota personnel en durée de vidéo, budget journalier des stockages facturables (réglé dans chaque stockage), part équitable, anti-rafale, gros consommateurs. Les reprises d'une même vidéo ne sont pas recomptées."),
+          h("label", { class: "check", style: { display: "flex", marginTop: "12px" } }, enabled, "Limitation active"),
+          h("label", { class: "check", style: { display: "flex", marginTop: "8px" } }, exempt, "Admins exemptés du quota personnel (le budget des stockages s'applique toujours)"),
+          form,
+          h("div", { class: "row", style: { marginTop: "16px" } }, save),
+        ),
+      ),
     );
   };
 
@@ -971,8 +1610,8 @@ async function confirmPlan(files) {
   const poolUsed = act.reduce((a, x) => a + x.used_bytes, 0) + total;
   const poolQuota = act.reduce((a, x) => a + x.quota_bytes, 0);
   if (poolQuota && pct(poolUsed, poolQuota) >= 90) warns.push(`⚠️ Le pool sera rempli à ${pct(poolUsed, poolQuota)} % au total.`);
-  if (warns.length) return confirm([...lines, "", ...warns, "", "Continuer l'envoi ?"].join("\n"));
-  toast(lines.join(" · "), 4000);
+  if (warns.length) return uiConfirm([...lines, "", ...warns].join("\n"), { title: "Vérifier l'envoi", ok: "Continuer l'envoi" });
+  toast(lines.join("\n"), 4000);
   return true;
 }
 
@@ -984,21 +1623,21 @@ function storageCard() {
     const act = storages.filter((x) => x.active);
     const used = act.reduce((a, x) => a + x.used_bytes, 0);
     const quota = act.reduce((a, x) => a + x.quota_bytes, 0);
-    const dest = h("select", { style: { maxWidth: "220px" }, title: "Où envoyer les prochaines vidéos" },
+    const dest = h("select", { style: { width: "auto", maxWidth: "240px" }, title: "Où envoyer les prochaines vidéos" },
       h("option", { value: "" }, "Destination : automatique"),
       ...storages.filter((x) => x.active).map((x) => h("option", { value: x.id, selected: x.id === preferredStorage }, "Uniquement : " + x.name)),
     );
     dest.onchange = () => { preferredStorage = dest.value; };
     card.replaceChildren(
-      h("div", { class: "row" },
-        h("h3", { style: { flex: 1 } }, "Stockages vidéo"),
+      h("div", { class: "toolbar" },
         dest,
-        h("button", { class: "ghost", onclick: recompute, title: "Recalcule l'espace utilisé à partir des vidéos enregistrées" }, "Recalculer"),
-        h("button", { class: "ghost", onclick: () => { editing = "new"; render(); } }, "+ Stockage"),
+        h("span", { class: "sp" }),
+        h("button", { class: "ghost sm", onclick: recompute, title: "Recalcule l'espace utilisé à partir des vidéos enregistrées" }, "Recalculer"),
+        h("button", { class: "sm", onclick: () => { editing = "new"; render(); } }, icon("plus"), "Stockage"),
       ),
-      h("div", { style: { marginTop: "10px" } },
+      h("div", { class: "sform", style: { marginTop: 0 } },
         h("div", { class: "row", style: { fontSize: "14px" } },
-          h("span", { style: { flex: 1 } }, `Pool : ${fmtBytes(used)} / ${fmtBytes(quota)}`),
+          h("b", { style: { flex: 1 } }, `Pool : ${fmtBytes(used)} / ${fmtBytes(quota)}`),
           h("span", { class: "muted" }, `${pct(used, quota)} % · reste ${fmtBytes(act.reduce((a, x) => a + Math.max(0, x.quota_bytes - x.used_bytes), 0))}`)),
         meter(used, quota),
       ),
@@ -1013,7 +1652,7 @@ function storageCard() {
     if (error) return fail(error);
     const { data } = await sb.from("storage_backends").select("id, used_bytes");
     for (const r of data || []) { const x = storages.find((y) => y.id === r.id); if (x) x.used_bytes = r.used_bytes; }
-    render(); toast("Espace recalculé");
+    render(); renderNav(); toast("Espace recalculé");
   }
 
   function storeRow(x) {
@@ -1035,17 +1674,19 @@ function storageCard() {
       try {
         let r = await r2({ action: "setup-cors", storage_id: x.id, origins });
         if (!r.ok && r.need_master_key) {
-          const kid = prompt("Cette clé ne peut pas modifier le bucket.\nkeyID de ta clé maître B2 (utilisée une seule fois, jamais enregistrée) :");
-          const ak = kid && prompt("applicationKey de la clé maître B2 :");
-          if (kid && ak) r = await r2({ action: "setup-cors", storage_id: x.id, origins, key_id: kid.trim(), app_key: ak.trim() });
+          const k = await uiForm({
+            title: "Clé maître B2", text: "Cette clé ne peut pas modifier le bucket. Clé maître B2 : utilisée une seule fois, jamais enregistrée.", ok: "Configurer",
+            fields: [{ key: "kid", label: "keyID" }, { key: "ak", label: "applicationKey", type: "password" }],
+          });
+          if (k?.kid && k?.ak) r = await r2({ action: "setup-cors", storage_id: x.id, origins, key_id: k.kid.trim(), app_key: k.ak.trim() });
         }
         status.textContent = r.ok ? "✓ CORS configuré (actif sous quelques minutes)" : "✗ " + r.error;
         status.style.color = r.ok ? "var(--ok)" : "var(--danger)";
       } catch (e) { status.textContent = "✗ " + e.message; status.style.color = "var(--danger)"; }
     };
     return h("div", { class: "store" + (x.active ? "" : " off") },
-      h("div", { class: "row" },
-        h("b", {}, x.name),
+      h("div", { class: "row", style: { gap: "6px" } },
+        h("b", { style: { marginRight: "4px" } }, x.name),
         h("span", { class: "tag" }, PROVIDERS[x.provider] || x.provider),
         x.is_env ? h("span", { class: "tag" }, "secrets GitHub") : "",
         x.active ? "" : h("span", { class: "tag" }, "désactivé"),
@@ -1064,17 +1705,17 @@ function storageCard() {
             h("span", { class: "muted" }, `classe B ${u.class_b}/${classBCap(x)} · C ${u.class_c}/${classCCap(x)}${u.refused ? ` · ${u.refused} refus` : ""}`)),
           meter(u.egress_bytes, egressCap(x)));
       })() : "",
-      h("div", { class: "row", style: { marginTop: "6px", gap: "4px" } },
+      h("div", { class: "row", style: { marginTop: "6px", gap: "2px" } },
         h("button", { class: "link", onclick: test }, "Tester"),
         x.is_env ? "" : h("button", { class: "link", onclick: cors, title: "Autorise l'envoi des vidéos depuis cette page" }, "Configurer CORS"),
         h("button", { class: "link", onclick: () => { editing = editing === x ? null : x; render(); } }, editing === x ? "Fermer" : "Modifier"),
-        x.is_env ? "" : h("button", { class: "link", onclick: async () => {
-          if (!confirm(`Supprimer le stockage « ${x.name} » ? (impossible s'il contient encore des vidéos)`)) return;
+        x.is_env ? "" : h("button", { class: "link", style: { color: "var(--danger)" }, onclick: async () => {
+          if (!(await uiConfirm(`Supprimer le stockage « ${x.name} » ? (impossible s'il contient encore des vidéos)`, { ok: "Supprimer", danger: true }))) return;
           const { error } = await sb.rpc("admin_delete_storage", { p_id: x.id });
           if (error) return fail(error);
           storages = storages.filter((y) => y !== x);
           if (preferredStorage === x.id) preferredStorage = "";
-          render(); toast("Stockage supprimé");
+          render(); renderNav(); toast("Stockage supprimé");
         } }, "Supprimer"),
         status,
       ),
@@ -1111,7 +1752,7 @@ function storageCard() {
     const layout = () => {
       const pr = v.provider.value;
       fields.replaceChildren(
-        envOnly ? h("p", { class: "muted", style: { fontSize: "13px" } }, "Stockage d'origine : ses clés sont dans les secrets GitHub (R2_*). Seuls le nom, le quota, la priorité et l'état se modifient ici.") : h("div", {},
+        envOnly ? h("p", { class: "muted", style: { fontSize: "13px", marginTop: "10px" } }, "Stockage d'origine : ses clés sont dans les secrets GitHub (R2_*). Seuls le nom, le quota, la priorité et l'état se modifient ici.") : h("div", {},
           h("label", {}, "Type"), v.provider,
           pr === "r2" ? h("div", {}, h("label", {}, "Account ID Cloudflare"), v.account)
                       : h("div", { class: "grid2" },
@@ -1177,11 +1818,12 @@ function storageCard() {
         i >= 0 ? (storages[i] = data) : storages.push(data);
         storages.sort((a, b) => a.priority - b.priority || String(a.created_at).localeCompare(String(b.created_at)));
       }
-      editing = null; render();
+      editing = null; render(); renderNav();
       toast(isNew ? "Stockage ajouté — clique sur « Tester »" : "Stockage enregistré");
     } }, isNew ? "Ajouter" : "Enregistrer");
 
     return h("div", { class: "sform" },
+      h("b", {}, isNew ? "Nouveau stockage" : "Modifier « " + x.name + " »"),
       h("label", {}, "Nom"), v.name,
       fields,
       h("div", { class: "grid2" },
@@ -1198,7 +1840,7 @@ function storageCard() {
         h("p", { class: "muted", style: { fontSize: "12px", marginTop: "6px" } },
           "Garde une marge sous les limites gratuites (ex. 900 Mo pour 1 Go). Plusieurs buckets d'un même compte B2 : mets le même nom de compte, ils partageront le budget."),
       ) : "",
-      h("label", { class: "check", style: { marginTop: "12px" } }, v.active, "Actif (reçoit de nouvelles vidéos)"),
+      h("label", { class: "check", style: { marginTop: "14px" } }, v.active, "Actif (reçoit de nouvelles vidéos)"),
       h("div", { class: "row", style: { marginTop: "14px" } }, save,
         h("button", { class: "ghost", onclick: () => { editing = null; render(); } }, "Annuler")),
       err,
@@ -1233,7 +1875,7 @@ async function removeFromCategory(c, titleId) {
 
 /** Pastilles cliquables dans la fiche d'un titre : ajoute / retire de chaque catégorie. */
 function titleCategoryChips(t) {
-  const box = h("div", { class: "row", style: { gap: "8px" } });
+  const box = h("div", { class: "row", style: { gap: "6px" } });
   const render = () => box.replaceChildren(...categories.map((c) => {
     const on = c.items.includes(t.id);
     return h("button", { class: "chip" + (on ? " on" : ""), onclick: async () => {
@@ -1249,22 +1891,23 @@ function titleCategoryChips(t) {
 
 const openCats = new Set();
 
-/** Carte de gestion des catégories (accueil de l'admin). */
+/** Gestion des catégories (rangées de l'accueil). */
 function categoriesCard() {
   const card = h("div", { class: "card" });
   const render = () => {
     card.replaceChildren(
-      h("div", { class: "row" },
-        h("h3", { style: { flex: 1 } }, "Catégories (rangées de l'accueil)"),
-        h("button", { class: "ghost", onclick: addCategory }, "+ Catégorie"),
+      h("div", { class: "toolbar" },
+        h("span", { class: "count" }, plural(categories.length, "catégorie")),
+        h("span", { class: "sp" }),
+        h("button", { class: "sm", onclick: addCategory }, icon("plus"), "Catégorie"),
       ),
-      categories.length ? "" : h("p", { class: "muted", style: { marginTop: "10px" } }, "Aucune catégorie."),
-      h("div", { style: { marginTop: "8px" } }, ...categories.map((c, i) => catBlock(c, i))),
+      categories.length ? "" : h("div", { class: "empty" }, icon("tag"), h("div", {}, "Aucune catégorie.")),
+      h("div", {}, ...categories.map((c, i) => catBlock(c, i))),
     );
   };
 
   async function addCategory() {
-    const name = prompt("Nom de la catégorie (ex : Top 10, Anime, Nouveautés…)");
+    const name = await uiPrompt("Nouvelle catégorie", "", { placeholder: "ex : Top 10, Anime, Nouveautés…", ok: "Créer" });
     if (!name?.trim()) return;
     const sort = Math.max(0, ...categories.map((c) => c.sort)) + 1;
     const { data, error } = await sb.from("categories").insert({ name: name.trim(), sort }).select("*").single();
@@ -1298,20 +1941,21 @@ function categoriesCard() {
     const open = openCats.has(c.id);
     const block = h("div", { class: "cat" },
       h("div", { class: "row" },
+        h("span", { class: "dim", style: { width: "20px", fontWeight: 700 } }, i + 1),
         name,
         h("label", { class: "check", title: "Grands numéros 1, 2, 3… comme un Top 10" }, ranked, "Classement"),
-        h("span", { class: "muted", style: { fontSize: "13px" } }, `${c.items.length} titre${c.items.length > 1 ? "s" : ""}`),
+        h("span", { class: "muted", style: { fontSize: "13px" } }, plural(c.items.length, "titre")),
         h("span", { style: { flex: 1 } }),
         h("button", { class: "arrow", title: "Monter", disabled: i === 0, onclick: () => reorder(moveIn(categories, i, i - 1)) }, "↑"),
         h("button", { class: "arrow", title: "Descendre", disabled: i === categories.length - 1, onclick: () => reorder(moveIn(categories, i, i + 1)) }, "↓"),
-        h("button", { class: "link", onclick: () => { open ? openCats.delete(c.id) : openCats.add(c.id); render(); } }, open ? "Fermer" : "Gérer"),
-        h("button", { class: "link", title: "Supprimer la catégorie", onclick: async () => {
-          if (!confirm(`Supprimer la catégorie « ${c.name} » ? (les titres ne sont pas supprimés)`)) return;
+        h("button", { class: "ghost sm", onclick: () => { open ? openCats.delete(c.id) : openCats.add(c.id); render(); } }, open ? "Fermer" : "Gérer les titres"),
+        h("button", { class: "icon", title: "Supprimer la catégorie", onclick: async () => {
+          if (!(await uiConfirm(`Supprimer la catégorie « ${c.name} » ? Les titres ne sont pas supprimés.`, { ok: "Supprimer", danger: true }))) return;
           const { error } = await sb.from("categories").delete().eq("id", c.id);
           if (error) return fail(error);
           categories = categories.filter((x) => x !== c);
           render();
-        } }, "✕"),
+        } }, icon("trash")),
       ),
       open ? catTitles(c) : "",
     );
@@ -1320,7 +1964,7 @@ function categoriesCard() {
 
   function catTitles(c) {
     const others = titles.filter((t) => !c.items.includes(t.id));
-    const select = h("select", { style: { maxWidth: "320px" } },
+    const select = h("select", { style: { maxWidth: "340px" } },
       h("option", { value: "" }, others.length ? "+ Ajouter un titre…" : "Tous les titres sont déjà dedans"),
       ...others.map((t) => h("option", { value: t.id }, `${t.name} (${t.kind === "film" ? "film" : "série"})`)),
     );
@@ -1329,13 +1973,14 @@ function categoriesCard() {
       try { await addToCategory(c, select.value); render(); } catch (e) { fail(e); }
     };
     const items = c.items.map(titleById).filter(Boolean);
-    return h("div", { class: "cat-titles" },
+    return h("div", { class: "cat-titles sform" },
       ...items.map((t, j) => h("div", { class: "it" },
         h("span", { class: "rk" }, c.ranked ? `${j + 1}` : "•"),
+        h("div", { class: "thumb", style: Object.assign({ width: "24px" }, t.poster_url ? { backgroundImage: `url("${t.poster_url}")` } : {}) }),
         h("span", { style: { flex: 1 } }, t.name, " ", h("span", { class: "muted", style: { fontSize: "12px" } }, t.kind === "film" ? "film" : "série")),
         h("button", { class: "arrow", disabled: j === 0, onclick: async () => { try { await setCategoryTitles(c, moveIn(c.items, c.items.indexOf(t.id), c.items.indexOf(t.id) - 1)); render(); } catch (e) { fail(e); } } }, "↑"),
         h("button", { class: "arrow", disabled: j === items.length - 1, onclick: async () => { try { await setCategoryTitles(c, moveIn(c.items, c.items.indexOf(t.id), c.items.indexOf(t.id) + 1)); render(); } catch (e) { fail(e); } } }, "↓"),
-        h("button", { class: "link", title: "Retirer de la catégorie", onclick: async () => { try { await removeFromCategory(c, t.id); render(); } catch (e) { fail(e); } } }, "✕"),
+        h("button", { class: "arrow", title: "Retirer de la catégorie", onclick: async () => { try { await removeFromCategory(c, t.id); render(); } catch (e) { fail(e); } } }, "✕"),
       )),
       h("div", { style: { marginTop: "8px" } }, select),
     );
@@ -1349,12 +1994,14 @@ function categoriesCard() {
 function seasonsCard(t) {
   const card = h("div", { class: "card" });
   const render = () => {
+    const eps = t.seasons.reduce((a, s) => a + s.episodes.length, 0);
     card.replaceChildren(
-      h("div", { class: "row" },
-        h("h3", { style: { flex: 1 } }, "Saisons & épisodes"),
-        h("button", { class: "ghost", onclick: addSeason }, "+ Saison"),
+      h("div", { class: "ptitle", style: { marginBottom: 0 } },
+        h("h3", {}, "Saisons & épisodes"),
+        h("span", { class: "count" }, `${plural(t.seasons.length, "saison")} · ${plural(eps, "épisode")}`),
+        h("button", { class: "ghost sm", onclick: addSeason }, icon("plus"), "Saison"),
       ),
-      t.seasons.length ? "" : h("p", { class: "muted", style: { marginTop: "10px" } }, "Ajoute une première saison."),
+      t.seasons.length ? "" : h("div", { class: "empty" }, icon("tv"), h("div", {}, "Ajoute une première saison, puis glisse les vidéos des épisodes.")),
       ...t.seasons.map((s, si) => seasonBlock(s, si)),
     );
   };
@@ -1396,13 +2043,18 @@ function seasonsCard(t) {
   }
 
   function seasonBlock(s, si) {
-    const nameInput = h("input", { type: "text", value: s.name, style: { maxWidth: "240px" } });
+    const nameInput = h("input", { type: "text", value: s.name });
     nameInput.onchange = async () => {
       const { error } = await sb.from("seasons").update({ name: nameInput.value.trim() }).eq("id", s.id);
       error ? fail(error) : (s.name = nameInput.value.trim(), toast("Saison renommée"));
     };
     const tbody = h("tbody");
-    const renderEps = () => tbody.replaceChildren(...s.episodes.map((e) => episodeRow(s, e, renderEps)));
+    const sum = h("span", { class: "count" });
+    const renderEps = () => {
+      tbody.replaceChildren(...s.episodes.map((e) => episodeRow(s, e, renderEps)));
+      const real = s.episodes.filter((e) => !e._pending);
+      sum.textContent = [plural(real.length, "épisode"), fmtDur(real.reduce((a, e) => a + (e.duration_s || 0), 0)), fmtSize(real.reduce((a, e) => a + (e.size_bytes || 0), 0))].filter(Boolean).join(" · ");
+    };
     renderEps();
 
     const addEpisodes = async (files) => {
@@ -1436,17 +2088,17 @@ function seasonsCard(t) {
       }
     };
 
-    const del = h("button", { class: "link", title: "Supprimer la saison", onclick: async () => {
-      if (!confirm(`Supprimer ${s.name || "la saison " + s.number} et ses ${s.episodes.length} épisodes ?`)) return;
+    const del = h("button", { class: "icon", title: "Supprimer la saison", onclick: async () => {
+      if (!(await uiConfirm(`Supprimer ${s.name || "la saison " + s.number} et ses ${s.episodes.length} épisodes ? Les vidéos seront effacées du stockage.`, { title: "Supprimer la saison", ok: "Supprimer", danger: true }))) return;
       const { error } = await sb.from("seasons").delete().eq("id", s.id);
       if (error) return fail(error);
       storeDelete(s.episodes.map(videoOf));
       t.seasons = t.seasons.filter((x) => x !== s);
       render();
-    } }, "Supprimer");
+    } }, icon("trash"));
 
     return h("div", { class: "season" },
-      h("div", { class: "row" }, h("b", { class: "muted" }, `S${pad(s.number)}`), nameInput, h("span", { style: { flex: 1 } }),
+      h("div", { class: "shead" }, h("span", { class: "snum" }, `S${pad(s.number)}`), nameInput, sum, h("span", { style: { flex: 1 } }),
         h("button", { class: "arrow", title: "Monter la saison", disabled: si === 0,
           onclick: () => reorderSeasons(moved(t.seasons, si, si - 1)) }, "↑"),
         h("button", { class: "arrow", title: "Descendre la saison", disabled: si === t.seasons.length - 1,
@@ -1465,14 +2117,14 @@ function seasonsCard(t) {
       const { error } = await sb.from("episodes").update({ name: name.value.trim() }).eq("id", e.id);
       error ? fail(error) : (e.name = name.value.trim(), toast("Épisode renommé"));
     };
-    const syn = h("button", { class: "link", title: "Résumé de l'épisode", onclick: async () => {
-      const v = prompt(`Résumé de l'épisode ${e.number}`, e.synopsis || "");
+    const syn = h("button", { class: "link", title: "Résumé de l'épisode", style: e.synopsis ? {} : { color: "#f2c25c" }, onclick: async () => {
+      const v = await uiPrompt(`Résumé · épisode ${e.number}`, e.synopsis || "", { type: "textarea", text: e.name });
       if (v == null) return;
       const { error } = await sb.from("episodes").update({ synopsis: v.trim() }).eq("id", e.id);
-      error ? fail(error) : (e.synopsis = v.trim(), toast("Résumé enregistré"));
+      error ? fail(error) : (e.synopsis = v.trim(), toast("Résumé enregistré"), rerender());
     } }, e.synopsis ? "✎ résumé" : "+ résumé");
-    const del = h("button", { class: "link", title: "Supprimer", onclick: async () => {
-      if (!confirm(`Supprimer l'épisode ${e.number} « ${e.name} » ?`)) return;
+    const del = h("button", { class: "arrow", title: "Supprimer l'épisode", onclick: async () => {
+      if (!(await uiConfirm(`Supprimer l'épisode ${e.number} « ${e.name} » ? La vidéo sera effacée du stockage.`, { ok: "Supprimer", danger: true }))) return;
       const { error } = await sb.from("episodes").delete().eq("id", e.id);
       if (error) return fail(error);
       storeDelete([videoOf(e)]);

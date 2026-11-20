@@ -17,6 +17,8 @@ jobs:
       FTP_DIR: ${{ vars.FTP_DIR }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Injecter la config Supabase dans la page admin
         run: |
@@ -25,13 +27,23 @@ jobs:
           grep -q "__SUPABASE_" web/admin/index.html && { echo "::error::placeholder non remplacé"; exit 1; } || true
 
       - name: Upload FTP
+        env:
+          BEFORE: ${{ github.event.before }}
         run: |
           [ -n "$FTP_HOST" ] || { echo "::error::Secrets FTP manquants"; exit 1; }
           DIR="${FTP_DIR#/}"; DIR="${DIR%/}"; [ "$DIR" = "." ] && DIR=""
           up() { curl -sS --fail --ftp-create-dirs --user "$FTP_USER:$FTP_PASSWORD" -T "$1" "ftp://$FTP_HOST/${DIR:+$DIR/}$2"; }
-          up web/index.html index.html
-          up web/.htaccess .htaccess
-          up web/logo.svg logo.svg
-          for f in robots.txt sitemap.xml site.webmanifest og-image.png apercu.jpg apple-touch-icon.png icon-192.png icon-512.png; do up "web/$f" "$f"; done
-          up web/admin/index.html admin/index.html
+          # Push : on n'envoie que les fichiers de web/ modifiés par le push (ex. seulement l'admin).
+          # Lancement manuel ou historique introuvable : tout le site est envoyé.
+          if [ "${{ github.event_name }}" = "push" ] && [ -n "$BEFORE" ] && [ "$BEFORE" != "0000000000000000000000000000000000000000" ] && git cat-file -e "$BEFORE^{commit}" 2>/dev/null; then
+            CHANGED=$(git diff --name-only --diff-filter=AMR "$BEFORE" "$GITHUB_SHA" -- web/)
+            [ -n "$CHANGED" ] || { echo "Aucun fichier du site modifié : rien à envoyer."; exit 0; }
+            echo "$CHANGED" | while read -r f; do echo "↑ $f"; up "$f" "${f#web/}"; done
+          else
+            up web/index.html index.html
+            up web/.htaccess .htaccess
+            up web/logo.svg logo.svg
+            for f in robots.txt sitemap.xml site.webmanifest og-image.png apercu.jpg apple-touch-icon.png icon-192.png icon-512.png; do up "web/$f" "$f"; done
+            up web/admin/index.html admin/index.html
+          fi
           echo "Site : https://xydhub.tech  ·  Admin : https://xydhub.tech/admin/"
