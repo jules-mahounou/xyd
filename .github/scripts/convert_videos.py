@@ -25,7 +25,9 @@ KEY = os.environ["SUPABASE_SERVICE_ROLE_KEY"]
 DRY = os.environ.get("DRY_RUN", "1") == "1"
 SHARD, SHARDS = int(os.environ.get("SHARD", "0")), int(os.environ.get("SHARDS", "1"))
 DEADLINE = time.time() + 60 * float(os.environ.get("MAX_MINUTES", "320"))
-OK_EXT = (".mp4", ".m4v", ".mov", ".mkv", ".webm")  # formats lus par l'app
+OK_FORMATS = ("mov", "mp4", "matroska", "webm")      # conteneurs lus par l'app (MP4/MOV, MKV/WebM)
+OK_VIDEO = ("h264", "hevc", "vp9", "av1")             # vidéo décodée par (presque) tous les téléphones
+OK_AUDIO = ("aac", "mp3", "opus", "vorbis", "flac")    # AC3, DTS… : souvent pas de décodeur → vidéo muette
 TMP = Path(os.environ.get("RUNNER_TEMP", "/tmp")) / "xyd-convert"
 TMP.mkdir(parents=True, exist_ok=True)
 
@@ -45,16 +47,38 @@ def rest(method, path, body=None, prefer=None):
 
 
 def todo():
-    """Vidéos dont l'extension n'est pas lisible par l'app."""
+    """Toutes les vidéos de cette part (le vrai format est lu dans le fichier, pas dans l'extension)."""
     rows = []
     for table, extra in (("titles", "&kind=eq.film"), ("episodes", "")):
         for from_ in range(0, 100000, 1000):
             q = f"{table}?select=id,video_key,storage_id,size_bytes,duration_s&video_key=not.is.null{extra}&order=id&offset={from_}&limit=1000"
             page = rest("GET", q)
-            rows += [dict(r, table=table) for r in page if not r["video_key"].lower().endswith(OK_EXT)]
+            rows += [dict(r, table=table) for r in page]
             if len(page) < 1000:
                 break
     return [r for r in rows if zlib.crc32(r["id"].encode()) % SHARDS == SHARD]
+
+
+def inspect(r):
+    """Lit l'en-tête du fichier distant (quelques Ko) : conteneur et codecs réels → raison de convertir, ou None."""
+    c, bucket = storage(r["storage_id"])
+    url = c.generate_presigned_url("get_object", Params={"Bucket": bucket, "Key": r["video_key"]}, ExpiresIn=900)
+    p = subprocess.run(["ffprobe", "-v", "error", "-print_format", "json", "-show_streams", "-show_format", url],
+                       capture_output=True, text=True, timeout=120)
+    if p.returncode != 0:
+        return "illisible", "?", "?", "?", (p.stderr.strip().splitlines() or ["?"])[-1][:80]
+    j = json.loads(p.stdout)
+    fmt = j["format"]["format_name"]
+    v = next((s["codec_name"] for s in j["streams"] if s["codec_type"] == "video"), "-")
+    a = next((s["codec_name"] for s in j["streams"] if s["codec_type"] == "audio"), "-")
+    why = []
+    if not any(f in fmt.split(",") for f in OK_FORMATS):
+        why.append(f"conteneur {fmt}")
+    if v not in OK_VIDEO:
+        why.append(f"vidéo {v}")
+    if a not in OK_AUDIO and a != "-":
+        why.append(f"son {a}")
+    return ("convertir: " + ", ".join(why)) if why else "ok", fmt, v, a, ""
 
 
 _clients = {}
@@ -98,11 +122,11 @@ def convert(src, dst):
     v, a, dur = probe(src)
     if not v:
         raise RuntimeError("aucune piste vidéo")
-    copy_v = v["codec_name"] == "h264" and v.get("pix_fmt") in ("yuv420p", "yuvj420p")
+    copy_v = (v["codec_name"] == "h264" and v.get("pix_fmt") in ("yuv420p", "yuvj420p")) or v["codec_name"] == "hevc"
     copy_a = a is not None and a["codec_name"] in ("aac", "mp3")
     cmd = ["ffmpeg", "-y", "-v", "error", "-fflags", "+genpts", "-i", str(src), "-map", "0:v:0", "-map", "0:a:0?",
            "-sn", "-dn", "-map_metadata", "-1"]
-    cmd += ["-c:v", "copy"] if copy_v else [
+    cmd += (["-c:v", "copy"] + (["-tag:v", "hvc1"] if v["codec_name"] == "hevc" else [])) if copy_v else [
         "-c:v", "libx264", "-preset", "veryfast", "-crf", "23", "-profile:v", "high", "-level:v", "4.1",
         "-pix_fmt", "yuv420p", "-vf", "scale='min(1920,iw)':-2"]
     cmd += ["-c:a", "copy"] if copy_a else ["-c:a", "aac", "-b:a", "128k", "-ac", "2"]
@@ -117,11 +141,19 @@ def convert(src, dst):
 
 
 def main():
-    items = todo()
+    allv = todo()
+    print(f"Analyse de {len(allv)} vidéo(s) (part {SHARD + 1}/{SHARDS})")
+    items = []
+    for r in allv:
+        try:
+            verdict, fmt, v, a, err = inspect(r)
+        except Exception as e:
+            verdict, fmt, v, a, err = "illisible", "?", "?", "?", str(e)[:80]
+        print(f"  [{verdict}] {fmt} · {v} · {a} · {r['video_key']} {err}")
+        if verdict.startswith("convertir"):
+            items.append(r)
     total = sum(r["size_bytes"] or 0 for r in items)
-    print(f"{len(items)} vidéo(s) à convertir (part {SHARD + 1}/{SHARDS}) · {total / 1e9:.1f} Go")
-    for r in items:
-        print(f"  - {r['table']}/{r['id']} : {r['video_key']}")
+    print(f"→ {len(items)} vidéo(s) à convertir · {total / 1e9:.1f} Go")
     if DRY or not items:
         return 0
     done = failed = 0
