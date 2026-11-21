@@ -34,7 +34,8 @@ def rest(method, path, body=None, prefer=None):
     req = urllib.request.Request(f"{URL}/rest/v1/{path}", method=method,
                                  data=None if body is None else json.dumps(body).encode())
     req.add_header("apikey", KEY)
-    req.add_header("Authorization", f"Bearer {KEY}")
+    if KEY.startswith("eyJ"):  # ancienne clé JWT ; les clés sb_secret_… passent par apikey seul
+        req.add_header("Authorization", f"Bearer {KEY}")
     req.add_header("Content-Type", "application/json")
     if prefer:
         req.add_header("Prefer", prefer)
