@@ -16,6 +16,7 @@ import androidx.media3.exoplayer.mediacodec.MediaCodecSelector
 import androidx.media3.exoplayer.source.ProgressiveMediaSource
 import androidx.media3.exoplayer.video.MediaCodecVideoRenderer
 import androidx.media3.extractor.ExtractorsFactory
+import androidx.media3.extractor.avi.AviExtractor
 import androidx.media3.extractor.mkv.MatroskaExtractor
 import androidx.media3.extractor.mp4.Mp4Extractor
 import androidx.media3.extractor.text.SubtitleParser
@@ -24,7 +25,8 @@ import java.io.File
 /**
  * ExoPlayer réduit au strict nécessaire :
  * - 2 renderers (vidéo + audio MediaCodec matériel), pas de texte/métadonnées/caméra/image ;
- * - 2 extracteurs (MP4 + MKV) au lieu des ~20 de DefaultExtractorsFactory ;
+ * - 3 extracteurs (MP4 + MKV + AVI) au lieu des ~20 de DefaultExtractorsFactory ;
+ *   AVI : anciens fichiers Xvid/DivX (vidéo MPEG-4 décodée par le téléphone, son MP3) ;
  * - source progressive sur fichier local chiffré.
  * R8 peut ainsi éliminer tout le reste de Media3.
  */
@@ -40,6 +42,7 @@ object Players {
             arrayOf(
                 Mp4Extractor(SubtitleParser.Factory.UNSUPPORTED),
                 MatroskaExtractor(SubtitleParser.Factory.UNSUPPORTED),
+                AviExtractor(AviExtractor.FLAG_EMIT_RAW_SUBTITLE_DATA, SubtitleParser.Factory.UNSUPPORTED),
             )
         }
         val source = ProgressiveMediaSource.Factory(EncryptedFileDataSource.Factory(ctx), extractors)

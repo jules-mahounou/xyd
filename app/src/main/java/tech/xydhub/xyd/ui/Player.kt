@@ -166,7 +166,8 @@ fun PlayerScreen(mediaId: String, onPlay: (String) -> Unit, onClose: () -> Unit)
                     PlaybackException.ERROR_CODE_DECODING_FORMAT_UNSUPPORTED,
                     PlaybackException.ERROR_CODE_DECODING_FORMAT_EXCEEDS_CAPABILITIES ->
                         "Format vidéo non supporté par ce téléphone."
-                    PlaybackException.ERROR_CODE_PARSING_CONTAINER_UNSUPPORTED,
+                    PlaybackException.ERROR_CODE_PARSING_CONTAINER_UNSUPPORTED ->
+                        "Format de fichier non pris en charge. Mets l'app à jour."
                     PlaybackException.ERROR_CODE_PARSING_CONTAINER_MALFORMED ->
                         "Fichier vidéo illisible. Supprime-le et télécharge-le à nouveau."
                     else -> "Lecture impossible (${e.errorCodeName})"
