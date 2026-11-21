@@ -59,6 +59,46 @@ def todo():
     return [r for r in rows if zlib.crc32(r["id"].encode()) % SHARDS == SHARD]
 
 
+_clients = {}
+
+
+def region_of(row):
+    """Région S3 valide : « s3.eu-central-003 » (saisie B2) → « eu-central-003 », sinon déduite de l'endpoint."""
+    r = (row.get("region") or "").strip().removeprefix("s3.")
+    if not r or r == "auto":
+        host = urllib.parse.urlparse(row["endpoint"]).hostname or ""
+        if host.startswith("s3.") and host.count(".") >= 3:
+            r = host.split(".")[1]
+    return r or "auto"
+
+
+def storage(storage_id):
+    """(client S3, bucket) du stockage d'une vidéo. None = stockage d'origine (secrets R2)."""
+    if storage_id in _clients:
+        return _clients[storage_id]
+    row = None
+    if storage_id:
+        data = rest("POST", "rpc/storage_credentials", {"p_id": storage_id})
+        row = data[0] if isinstance(data, list) else data
+        if not row:
+            raise RuntimeError("stockage introuvable")
+    cfg = Config(s3={"addressing_style": "path"}, retries={"max_attempts": 5, "mode": "standard"},
+                 signature_version="s3v4",
+                 # boto3 récent ajoute des sommes de contrôle CRC que R2 / B2 n'acceptent pas toujours
+                 request_checksum_calculation="when_required", response_checksum_validation="when_required")
+    if not row or row.get("is_env"):
+        c = boto3.client("s3", endpoint_url=f"https://{os.environ['R2_ACCOUNT_ID']}.r2.cloudflarestorage.com",
+                         aws_access_key_id=os.environ["R2_ACCESS_KEY_ID"],
+                         aws_secret_access_key=os.environ["R2_SECRET_ACCESS_KEY"], region_name="auto", config=cfg)
+        res = (c, os.environ["R2_BUCKET"])
+    else:
+        c = boto3.client("s3", endpoint_url=row["endpoint"].rstrip("/"), aws_access_key_id=row["access_key"],
+                         aws_secret_access_key=row["secret_key"], region_name=region_of(row), config=cfg)
+        res = (c, row["bucket"])
+    _clients[storage_id] = res
+    return res
+
+
 _paid = None
 
 
@@ -67,7 +107,8 @@ def paid_storage(storage_id):
     global _paid
     if _paid is None:
         rows = rest("GET", "storage_backends?select=id,provider,billable,is_env")
-        _paid = {x["id"] for x in rows if not x["is_env"] and (x["billable"] if x["billable"] is not None else x["provider"] != "r2")}
+        # Payant = Backblaze, ou marqué « payant » dans l'admin. R2 et S3 non marqués : sortie gratuite.
+        _paid = {x["id"] for x in rows if not x["is_env"] and (x["billable"] is True or (x["billable"] is None and x["provider"] == "b2"))}
     return storage_id in _paid
 
 
@@ -146,8 +187,8 @@ def main():
         try:
             verdict, kind = inspect(r)
         except Exception as e:
-            verdict, kind = "erreur de lecture", str(e)[:80]
-        print(f"  [{verdict}] {r['video_key']}")
+            verdict, kind = "erreur de lecture", f"{type(e).__name__}: {e}"[:300]
+        print(f"  [{verdict}] {r['video_key']}" + (f" — {kind}" if verdict.startswith("erreur") else ""))
         if verdict.startswith("convertir"):
             items.append(r)
     if skipped:
