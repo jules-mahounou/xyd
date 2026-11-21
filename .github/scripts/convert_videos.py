@@ -84,6 +84,16 @@ def inspect(r):
 _clients = {}
 
 
+def region_of(row):
+    """Région S3 valide : « s3.eu-central-003 » (saisie B2) → « eu-central-003 », sinon déduite de l'endpoint."""
+    r = (row.get("region") or "").strip().removeprefix("s3.")
+    if not r or r == "auto":
+        host = urllib.parse.urlparse(row["endpoint"]).hostname or ""
+        if host.startswith("s3.") and host.count(".") >= 3:
+            r = host.split(".")[1]
+    return r or "auto"
+
+
 def storage(storage_id):
     """(client S3, bucket) du stockage d'une vidéo. None = stockage d'origine (secrets R2)."""
     if storage_id in _clients:
@@ -103,7 +113,7 @@ def storage(storage_id):
         res = (c, os.environ["R2_BUCKET"])
     else:
         c = boto3.client("s3", endpoint_url=row["endpoint"].rstrip("/"), aws_access_key_id=row["access_key"],
-                         aws_secret_access_key=row["secret_key"], region_name=row.get("region") or "auto", config=cfg)
+                         aws_secret_access_key=row["secret_key"], region_name=region_of(row), config=cfg)
         res = (c, row["bucket"])
     _clients[storage_id] = res
     return res
