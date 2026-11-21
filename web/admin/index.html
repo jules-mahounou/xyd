@@ -1716,7 +1716,7 @@ function downloadsCard() {
           h("p", { class: "muted", style: { fontSize: "12px" } },
             "Quota personnel en durée de vidéo, budget journalier des stockages facturables (réglé dans chaque stockage), part équitable, anti-rafale, gros consommateurs. Les reprises d'une même vidéo ne sont pas recomptées."),
           h("label", { class: "check", style: { display: "flex", marginTop: "12px" } }, enabled, "Limitation active"),
-          h("p", { class: "muted", style: { fontSize: "13px", marginTop: "8px" } }, "L'administrateur n'est jamais limité (quota, rafale, budget des stockages) ; ses téléchargements restent comptés dans les statistiques."),
+          h("p", { class: "muted", style: { fontSize: "13px", marginTop: "8px" } }, "L'administrateur n'a aucun quota personnel (minutes, nombre, rafale). Le budget gratuit des stockages payants (Backblaze…) s'applique à lui aussi, pour ne jamais dépasser l'offre gratuite."),
           form,
           h("div", { class: "row", style: { marginTop: "16px" } }, save),
         ),

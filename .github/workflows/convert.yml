@@ -9,6 +9,10 @@ on:
         description: "Liste seulement (aucune modification)"
         type: boolean
         default: true
+      only_free:
+        description: "Ignorer les stockages à sortie payante (Backblaze…)"
+        type: boolean
+        default: true
 
 concurrency: { group: convert-videos, cancel-in-progress: false }
 
@@ -27,6 +31,7 @@ jobs:
       R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
       R2_BUCKET: ${{ vars.R2_BUCKET || secrets.R2_BUCKET }}
       DRY_RUN: ${{ inputs.dry_run && '1' || '0' }}
+      ONLY_FREE: ${{ inputs.only_free && '1' || '0' }}
       SHARD: ${{ matrix.shard }}
       SHARDS: 4
       MAX_MINUTES: 320

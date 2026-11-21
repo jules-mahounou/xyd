@@ -59,64 +59,47 @@ def todo():
     return [r for r in rows if zlib.crc32(r["id"].encode()) % SHARDS == SHARD]
 
 
+_paid = None
+
+
+def paid_storage(storage_id):
+    """Stockage à sortie payante (Backblaze…) : on n'y lit rien tant que ONLY_FREE=1. None = R2 d'origine (gratuit)."""
+    global _paid
+    if _paid is None:
+        rows = rest("GET", "storage_backends?select=id,provider,billable,is_env")
+        _paid = {x["id"] for x in rows if not x["is_env"] and (x["billable"] if x["billable"] is not None else x["provider"] != "r2")}
+    return storage_id in _paid
+
+
+def sniff(head):
+    """Vrai conteneur d'après les premiers octets du fichier."""
+    if head[4:8] in (b"ftyp", b"moov", b"mdat", b"free", b"wide", b"skip"):
+        return "mp4"
+    if head[:4] == b"\x1a\x45\xdf\xa3":
+        return "mkv"
+    if head[:4] == b"RIFF" and head[8:12] == b"AVI ":
+        return "avi"
+    if head[:3] == b"FLV":
+        return "flv"
+    if head[:4] == b"\x30\x26\xb2\x75":
+        return "wmv"
+    if head[:4] == b"\x00\x00\x01\xba":
+        return "mpg"
+    if head[:1] == b"\x47" and len(head) > 188 and head[188:189] == b"\x47":
+        return "ts"
+    return "inconnu"
+
+
 def inspect(r):
-    """Lit l'en-tête du fichier distant (quelques Ko) : conteneur et codecs réels → raison de convertir, ou None."""
+    """Lit seulement les 512 premiers octets du fichier (coût négligeable) → raison de convertir, ou None."""
     c, bucket = storage(r["storage_id"])
-    url = c.generate_presigned_url("get_object", Params={"Bucket": bucket, "Key": r["video_key"]}, ExpiresIn=900)
-    p = subprocess.run(["ffprobe", "-v", "error", "-print_format", "json", "-show_streams", "-show_format", url],
-                       capture_output=True, text=True, timeout=120)
-    if p.returncode != 0:
-        return "illisible", "?", "?", "?", (p.stderr.strip().splitlines() or ["?"])[-1][:80]
-    j = json.loads(p.stdout)
-    fmt = j["format"]["format_name"]
-    v = next((s["codec_name"] for s in j["streams"] if s["codec_type"] == "video"), "-")
-    a = next((s["codec_name"] for s in j["streams"] if s["codec_type"] == "audio"), "-")
-    why = []
-    if not any(f in fmt.split(",") for f in OK_FORMATS):
-        why.append(f"conteneur {fmt}")
-    if v not in OK_VIDEO:
-        why.append(f"vidéo {v}")
-    if a not in OK_AUDIO and a != "-":
-        why.append(f"son {a}")
-    return ("convertir: " + ", ".join(why)) if why else "ok", fmt, v, a, ""
-
-
-_clients = {}
-
-
-def region_of(row):
-    """Région S3 valide : « s3.eu-central-003 » (saisie B2) → « eu-central-003 », sinon déduite de l'endpoint."""
-    r = (row.get("region") or "").strip().removeprefix("s3.")
-    if not r or r == "auto":
-        host = urllib.parse.urlparse(row["endpoint"]).hostname or ""
-        if host.startswith("s3.") and host.count(".") >= 3:
-            r = host.split(".")[1]
-    return r or "auto"
-
-
-def storage(storage_id):
-    """(client S3, bucket) du stockage d'une vidéo. None = stockage d'origine (secrets R2)."""
-    if storage_id in _clients:
-        return _clients[storage_id]
-    row = None
-    if storage_id:
-        data = rest("POST", "rpc/storage_credentials", {"p_id": storage_id})
-        row = data[0] if isinstance(data, list) else data
-        if not row:
-            raise RuntimeError("stockage introuvable")
-    cfg = Config(s3={"addressing_style": "path"}, retries={"max_attempts": 5, "mode": "standard"},
-                 signature_version="s3v4")
-    if not row or row.get("is_env"):
-        c = boto3.client("s3", endpoint_url=f"https://{os.environ['R2_ACCOUNT_ID']}.r2.cloudflarestorage.com",
-                         aws_access_key_id=os.environ["R2_ACCESS_KEY_ID"],
-                         aws_secret_access_key=os.environ["R2_SECRET_ACCESS_KEY"], region_name="auto", config=cfg)
-        res = (c, os.environ["R2_BUCKET"])
-    else:
-        c = boto3.client("s3", endpoint_url=row["endpoint"].rstrip("/"), aws_access_key_id=row["access_key"],
-                         aws_secret_access_key=row["secret_key"], region_name=region_of(row), config=cfg)
-        res = (c, row["bucket"])
-    _clients[storage_id] = res
-    return res
+    head = c.get_object(Bucket=bucket, Key=r["video_key"], Range="bytes=0-511")["Body"].read()
+    kind = sniff(head)
+    if kind in ("mp4", "mkv"):
+        return "ok", kind
+    if kind == "inconnu":
+        return "inconnu (non touché)", kind
+    return f"convertir: {kind}", kind
 
 
 def probe(path):
@@ -152,16 +135,23 @@ def convert(src, dst):
 
 def main():
     allv = todo()
-    print(f"Analyse de {len(allv)} vidéo(s) (part {SHARD + 1}/{SHARDS})")
+    only_free = os.environ.get("ONLY_FREE", "1") == "1"
+    print(f"Analyse de {len(allv)} vidéo(s) (part {SHARD + 1}/{SHARDS})" + (" · stockages payants ignorés" if only_free else ""))
     items = []
+    skipped = 0
     for r in allv:
+        if only_free and paid_storage(r["storage_id"]):
+            skipped += 1
+            continue
         try:
-            verdict, fmt, v, a, err = inspect(r)
+            verdict, kind = inspect(r)
         except Exception as e:
-            verdict, fmt, v, a, err = "illisible", "?", "?", "?", str(e)[:80]
-        print(f"  [{verdict}] {fmt} · {v} · {a} · {r['video_key']} {err}")
+            verdict, kind = "erreur de lecture", str(e)[:80]
+        print(f"  [{verdict}] {r['video_key']}")
         if verdict.startswith("convertir"):
             items.append(r)
+    if skipped:
+        print(f"  ({skipped} vidéo(s) sur un stockage payant, non analysée(s))")
     total = sum(r["size_bytes"] or 0 for r in items)
     print(f"→ {len(items)} vidéo(s) à convertir · {total / 1e9:.1f} Go")
     if DRY or not items:
