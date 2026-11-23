@@ -72,9 +72,43 @@ def real_usage(c, bucket):
             f" + {parts / 1e9:.2f} Go d'envois inachevés ({nmp})")
 
 
+def referenced_keys():
+    """Clés vidéo utilisées par l'app, par stockage : jamais touchées par le nettoyage."""
+    keys = {}
+    for table, extra in (("titles", "&kind=eq.film"), ("episodes", "")):
+        for off in range(0, 100000, 1000):
+            page = cv.rest("GET", f"{table}?select=storage_id,video_key&video_key=not.is.null{extra}&offset={off}&limit=1000")
+            for r in page:
+                keys.setdefault(r["storage_id"], set()).add(r["video_key"])
+            if len(page) < 1000:
+                break
+    return keys
+
+
+def purge_hidden(c, bucket, keep):
+    """Efface les anciennes versions cachées et les marqueurs de suppression (fichiers déjà supprimés/remplacés)."""
+    victims, size = [], 0
+    for page in c.get_paginator("list_object_versions").paginate(Bucket=bucket):
+        for v in page.get("Versions", []):
+            if not v.get("IsLatest") and v["Key"] not in keep:
+                victims.append({"Key": v["Key"], "VersionId": v["VersionId"]}); size += v["Size"]
+        for m in page.get("DeleteMarkers", []):
+            if m["Key"] not in keep:
+                victims.append({"Key": m["Key"], "VersionId": m["VersionId"]})
+    done = 0
+    for v in victims:  # une par une : B2 ne gère pas toujours DeleteObjects
+        try:
+            c.delete_object(Bucket=bucket, Key=v["Key"], VersionId=v["VersionId"]); done += 1
+        except Exception as e:
+            print(f"      ✗ {v['Key']} : {e}")
+    return done, len(victims), size
+
+
 def main():
     rows = cv.rest("GET", "storage_backends?select=id,name,provider,endpoint,region,bucket,is_env,quota_bytes,used_bytes,priority,active,created_at,billable&order=priority,created_at")
     n, size = count_videos()
+    purge = os.environ.get("PURGE_VERSIONS") == "1"
+    refs = referenced_keys() if purge else {}
     print(f"{len(rows)} stockage(s), dans l'ordre de remplissage automatique :\n")
     for i, x in enumerate(rows, 1):
         free = (x["quota_bytes"] or 0) - (x["used_bytes"] or 0)
@@ -91,6 +125,11 @@ def main():
             keys, cors = f"ÉCHEC ({type(e).__name__}: {str(e)[:120]})", "-"
         print(f"    clés / bucket : {keys} · CORS envoi depuis l'admin : {cors}")
         if keys == "OK":
+            if purge and x["provider"] == "b2":
+                keep = refs.get(x["id"], set()) | (refs.get(None, set()) if x["is_env"] else set())
+                done, total, freed = purge_hidden(c, bucket, keep)
+                print(f"    🧹 nettoyage : {done}/{total} élément(s) caché(s) effacé(s) · {freed / 1e9:.2f} Go libérés")
+                real = real_usage(c, bucket)
             print(f"    occupé réellement dans le bucket : {real}")
         print()
 

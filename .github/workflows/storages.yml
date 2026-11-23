@@ -3,6 +3,11 @@ name: Bilan des stockages
 # Lecture seule : liste les stockages, vérifie les clés et le CORS de chacun.
 on:
   workflow_dispatch:
+    inputs:
+      purge_versions:
+        description: "Backblaze : effacer les anciennes versions cachées (fichiers déjà supprimés ou remplacés)"
+        type: boolean
+        default: false
 
 jobs:
   report:
@@ -15,6 +20,7 @@ jobs:
       R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
       R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
       R2_BUCKET: ${{ vars.R2_BUCKET || secrets.R2_BUCKET }}
+      PURGE_VERSIONS: ${{ inputs.purge_versions && '1' || '0' }}
     steps:
       - uses: actions/checkout@v4
       - run: pip install -q boto3
