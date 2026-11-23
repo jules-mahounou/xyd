@@ -48,7 +48,8 @@ begin
   if auth.uid() is not null and not public.is_admin() then raise exception 'Réservé aux administrateurs'; end if;
   update public.storage_backends b set used_bytes =
       coalesce((select sum(size_bytes) from public.episodes e where e.storage_id = b.id), 0)
-    + coalesce((select sum(size_bytes) from public.titles t where t.storage_id = b.id and t.kind = 'film'), 0);
+    + coalesce((select sum(size_bytes) from public.titles t where t.storage_id = b.id and t.kind = 'film'), 0)
+   where true;  -- appel depuis l'admin (PostgREST) : un UPDATE sans WHERE y est refusé
 end; $$;
 select public.recompute_storage_usage();
 
