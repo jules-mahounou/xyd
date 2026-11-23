@@ -74,3 +74,34 @@ export async function presign(b: Backend, key: string, method: "GET" | "PUT", tt
   const signed = await b.client.sign(new Request(url, { method }), { aws: { signQuery: true } });
   return signed.url;
 }
+
+const unxml = (s: string) => s.replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"').replace(/&apos;/g, "'");
+
+/**
+ * Supprime un fichier ET toutes ses versions.
+ * Sur Backblaze B2, un simple DELETE ne fait que « cacher » le fichier : l'ancienne version reste stockée
+ * (et facturée) indéfiniment. On efface donc aussi chaque version et marqueur de suppression de cette clé.
+ * Sur R2 (pas de versions), la liste échoue ou revient vide : seul le DELETE compte.
+ */
+export async function removeObject(b: Backend, key: string): Promise<boolean> {
+  const r = await b.client.fetch(objectUrl(b, key), { method: "DELETE" });
+  const ok = r.ok || r.status === 404;
+  try {
+    const clean = key.replace(/^\/+/, "");
+    const list = new URL(b.base);
+    list.searchParams.set("versions", "");
+    list.searchParams.set("prefix", clean);
+    const res = await b.client.fetch(list);
+    if (!res.ok) return ok;
+    const xml = await res.text();
+    const versions = [...xml.matchAll(/<(?:Version|DeleteMarker)>([\s\S]*?)<\/(?:Version|DeleteMarker)>/g)]
+      .map((m) => ({ key: unxml(/<Key>([\s\S]*?)<\/Key>/.exec(m[1])?.[1] ?? ""), id: unxml(/<VersionId>([\s\S]*?)<\/VersionId>/.exec(m[1])?.[1] ?? "") }))
+      .filter((v) => v.key === clean && v.id && v.id !== "null");
+    for (const v of versions) {
+      const u = objectUrl(b, clean);
+      u.searchParams.set("versionId", v.id);
+      await b.client.fetch(u, { method: "DELETE" });
+    }
+  } catch { /* nettoyage best-effort : le fichier est déjà supprimé ou caché */ }
+  return ok;
+}

@@ -6,7 +6,7 @@
 //  - { action: "setup-cors", storage_id, origins, key_id?, app_key? }
 //      -> pose la règle CORS qui autorise l'envoi depuis l'admin (B2 : API native ; S3 : PutBucketCors)
 import { createClient } from "jsr:@supabase/supabase-js@2";
-import { backend, forget, objectUrl, presign } from "../_shared/storage.ts";
+import { backend, forget, objectUrl, presign, removeObject } from "../_shared/storage.ts";
 import { crypto as stdCrypto } from "jsr:@std/crypto@1";
 
 const CORS = {
@@ -72,8 +72,7 @@ Deno.serve(async (req) => {
       const results = await Promise.all(items.filter((it) => validKey(it.key)).map(async (it) => {
         const sid = validId(it.storage_id) ? it.storage_id : null;
         const b = await backend(sid);
-        const r = await b.client.fetch(objectUrl(b, it.key as string), { method: "DELETE" });
-        const ok = r.ok || r.status === 404;
+        const ok = await removeObject(b, it.key as string);
         if (ok && sid) await supabase.rpc("release_storage", { p_storage: sid, p_size: Math.max(0, Number(it.size) || 0) });
         return { key: it.key, ok };
       }));
@@ -84,11 +83,12 @@ Deno.serve(async (req) => {
       if (!validId(body.storage_id)) return json({ error: "storage_id invalide" }, 400);
       forget(body.storage_id);
       const b = await backend(body.storage_id);
-      const url = objectUrl(b, `films/.xyd-test-${crypto.randomUUID()}.txt`);
+      const testKey = `films/.xyd-test-${crypto.randomUUID()}.txt`;
+      const url = objectUrl(b, testKey);
       const put = await b.client.fetch(url, { method: "PUT", body: "xyd" });
       if (!put.ok) return json({ ok: false, error: `Écriture refusée (HTTP ${put.status}) : ${(await put.text()).slice(0, 200)}` });
-      const del = await b.client.fetch(url, { method: "DELETE" });
-      return json({ ok: true, delete_ok: del.ok || del.status === 404 });
+      const delOk = await removeObject(b, testKey);
+      return json({ ok: true, delete_ok: delOk });
     }
 
     if (body.action === "setup-cors") {

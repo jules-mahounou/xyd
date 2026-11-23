@@ -53,15 +53,24 @@ end; $$;
 select public.recompute_storage_usage();
 
 -- Réserve p_size octets sur le premier stockage actif qui a la place (ou sur p_storage s'il est imposé).
+-- Mode automatique : un stockage avec moins de 1 Go libre est considéré plein (on ne grappille pas
+-- les derniers Mo des vieux comptes) ; il ne resservira que si plus aucun stockage n'a 1 Go libre.
 create or replace function public.reserve_storage(p_size bigint, p_storage uuid default null)
 returns uuid language plpgsql security definer set search_path = '' as $$
 declare v_id uuid;
 begin
   if not public.is_admin() then raise exception 'Réservé aux administrateurs'; end if;
   select id into v_id from public.storage_backends
-   where active and used_bytes + p_size <= quota_bytes and (p_storage is null or id = p_storage)
+   where active and used_bytes + p_size <= quota_bytes and (p_storage is not null or quota_bytes - used_bytes >= 1000000000)
+     and (p_storage is null or id = p_storage)
    order by priority, created_at
    limit 1 for update;
+  if v_id is null and p_storage is null then
+    select id into v_id from public.storage_backends
+     where active and used_bytes + p_size <= quota_bytes
+     order by priority, created_at
+     limit 1 for update;
+  end if;
   if v_id is null then return null; end if;
   update public.storage_backends set used_bytes = used_bytes + p_size where id = v_id;
   return v_id;

@@ -1833,11 +1833,14 @@ function fillOrder() {
 }
 
 /** Simule la répartition d'un envoi (même algorithme que le serveur : premier stockage qui a la place). */
+const NEARLY_FULL = 1e9; // automatique : moins de 1 Go libre = considéré plein (comme reserve_storage)
 function simulate(files) {
   const pool = fillOrder().map((x) => ({ st: x, free: Math.max(0, x.quota_bytes - x.used_bytes), add: 0 }));
   const missing = [];
   for (const f of files) {
-    const slot = pool.find((p) => p.free >= f.size);
+    const fits = (p) => p.free >= f.size;
+    const roomy = (p) => preferredStorage || p.st.quota_bytes - p.st.used_bytes - p.add >= NEARLY_FULL;
+    const slot = pool.find((p) => fits(p) && roomy(p)) || pool.find(fits);
     if (slot) { slot.free -= f.size; slot.add += f.size; } else missing.push(f);
   }
   return { slots: pool.filter((p) => p.add > 0), missing };
