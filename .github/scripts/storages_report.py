@@ -42,6 +42,36 @@ def cors_ok(client, bucket):
         return f"NON ({type(e).__name__})"
 
 
+def real_usage(c, bucket):
+    """Ce que le fournisseur facture : fichiers visibles + anciennes versions cachées + envois inachevés."""
+    live = old = 0
+    nlive = nold = 0
+    try:
+        for page in c.get_paginator("list_object_versions").paginate(Bucket=bucket):
+            for v in page.get("Versions", []):
+                if v.get("IsLatest"):
+                    live += v["Size"]; nlive += 1
+                else:
+                    old += v["Size"]; nold += 1
+    except Exception:  # R2 : pas de versions
+        for page in c.get_paginator("list_objects_v2").paginate(Bucket=bucket):
+            for v in page.get("Contents", []):
+                live += v["Size"]; nlive += 1
+    parts = 0
+    try:
+        mp = c.list_multipart_uploads(Bucket=bucket).get("Uploads", [])
+        for u in mp:
+            for pg in c.get_paginator("list_parts").paginate(Bucket=bucket, Key=u["Key"], UploadId=u["UploadId"]):
+                parts += sum(p["Size"] for p in pg.get("Parts", []))
+        nmp = len(mp)
+    except Exception:
+        nmp = 0
+    total = live + old + parts
+    return (f"{total / 1e9:.2f} Go = {live / 1e9:.2f} Go de fichiers ({nlive})"
+            f" + {old / 1e9:.2f} Go d'anciennes versions cachées ({nold})"
+            f" + {parts / 1e9:.2f} Go d'envois inachevés ({nmp})")
+
+
 def main():
     rows = cv.rest("GET", "storage_backends?select=id,name,provider,endpoint,region,bucket,is_env,quota_bytes,used_bytes,priority,active,created_at,billable&order=priority,created_at")
     n, size = count_videos()
@@ -56,9 +86,13 @@ def main():
             c.head_bucket(Bucket=bucket)
             keys = "OK"
             cors = cors_ok(c, bucket)
+            real = real_usage(c, bucket)
         except Exception as e:
             keys, cors = f"ÉCHEC ({type(e).__name__}: {str(e)[:120]})", "-"
-        print(f"    clés / bucket : {keys} · CORS envoi depuis l'admin : {cors}\n")
+        print(f"    clés / bucket : {keys} · CORS envoi depuis l'admin : {cors}")
+        if keys == "OK":
+            print(f"    occupé réellement dans le bucket : {real}")
+        print()
 
 
 if __name__ == "__main__":
