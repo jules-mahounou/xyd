@@ -1,12 +1,18 @@
 // Edge Function réservée aux admins (page web /admin), pour le pool de stockages :
 //  - { action: "sign-upload", key, size, storage_id? } -> réserve l'espace puis URL PUT pré-signée
 //  - { action: "release", storage_id, size }           -> libère une réservation (envoi annulé/échoué)
+//  Envoi en plusieurs morceaux, reprenable (outil terminal « xyd ») :
+//  - { action: "mp-start", key, size, storage_id? }    -> réserve l'espace, ouvre l'envoi -> { storage_id, upload_id }
+//  - { action: "mp-sign", key, storage_id, upload_id, parts: [n] } -> URL PUT pré-signées des morceaux
+//  - { action: "mp-list", key, storage_id, upload_id } -> morceaux déjà reçus [{ n, etag, size }]
+//  - { action: "mp-complete", key, storage_id, upload_id, parts: [{ n, etag }] } -> assemble le fichier
+//  - { action: "mp-abort", key, storage_id, upload_id, size } -> annule et libère l'espace
 //  - { action: "delete", items: [{ key, storage_id, size }] } -> supprime des vidéos et libère l'espace
 //  - { action: "test", storage_id }                    -> vérifie les identifiants (écriture + suppression)
 //  - { action: "setup-cors", storage_id, origins, key_id?, app_key? }
 //      -> pose la règle CORS qui autorise l'envoi depuis l'admin (B2 : API native ; S3 : PutBucketCors)
 import { createClient } from "jsr:@supabase/supabase-js@2";
-import { backend, forget, objectUrl, presign, removeObject } from "../_shared/storage.ts";
+import { backend, forget, objectUrl, presign, presignPart, removeObject } from "../_shared/storage.ts";
 import { crypto as stdCrypto } from "jsr:@std/crypto@1";
 
 const CORS = {
@@ -59,6 +65,89 @@ Deno.serve(async (req) => {
         await supabase.rpc("release_storage", { p_storage: storageId, p_size: size });
         throw e;
       }
+    }
+
+    // ---------- envoi en plusieurs morceaux ----------
+    if (typeof body.action === "string" && body.action.startsWith("mp-")) {
+      if (!validKey(body.key)) return json({ error: "Clé invalide" }, 400);
+      const key = body.key;
+      if (body.action === "mp-start") {
+        const size = Math.max(0, Math.round(Number(body.size) || 0));
+        const wanted = validId(body.storage_id) ? body.storage_id : null;
+        const { data: storageId, error } = await supabase.rpc("reserve_storage", { p_size: size, p_storage: wanted });
+        if (error) return json({ error: error.message }, 500);
+        if (!storageId) return json({ error: wanted ? "Ce stockage n'a plus assez de place" : "Plus assez de place dans le pool de stockage" }, 409);
+        try {
+          const b = await backend(storageId);
+          const u = objectUrl(b, key);
+          u.searchParams.set("uploads", "");
+          const r = await b.client.fetch(u, { method: "POST", headers: { "Content-Type": "video/mp4" } });
+          const txt = await r.text();
+          const id = /<UploadId>([^<]+)<\/UploadId>/.exec(txt)?.[1];
+          if (!r.ok || !id) throw new Error(`Ouverture refusée (HTTP ${r.status}) : ${txt.slice(0, 200)}`);
+          const { data: st } = await supabase.from("storage_backends").select("name").eq("id", storageId).single();
+          return json({ storage_id: storageId, upload_id: id, storage_name: st?.name ?? null });
+        } catch (e) {
+          await supabase.rpc("release_storage", { p_storage: storageId, p_size: size });
+          throw e;
+        }
+      }
+      const sid = validId(body.storage_id) ? body.storage_id : null;
+      const uploadId = typeof body.upload_id === "string" && /^[A-Za-z0-9._~+\/=-]{8,1024}$/.test(body.upload_id) ? body.upload_id : null;
+      if (!uploadId) return json({ error: "upload_id invalide" }, 400);
+      const b = await backend(sid);
+      if (body.action === "mp-sign") {
+        const parts = (Array.isArray(body.parts) ? body.parts : []).map(Number).filter((n) => Number.isInteger(n) && n >= 1 && n <= 10000).slice(0, 200);
+        const urls: Record<number, string> = {};
+        for (const n of parts) urls[n] = await presignPart(b, key, uploadId, n, 3 * 3600);
+        return json({ urls });
+      }
+      if (body.action === "mp-list") {
+        const parts: { n: number; etag: string; size: number }[] = [];
+        let marker = "0";
+        for (let i = 0; i < 20; i++) {
+          const u = objectUrl(b, key);
+          u.searchParams.set("uploadId", uploadId);
+          u.searchParams.set("part-number-marker", marker);
+          const r = await b.client.fetch(u);
+          const txt = await r.text();
+          if (r.status === 404) return json({ error: "Envoi expiré ou inconnu", gone: true }, 404);
+          if (!r.ok) return json({ error: `Liste refusée (HTTP ${r.status})` }, 502);
+          for (const m of txt.matchAll(/<Part>([\s\S]*?)<\/Part>/g)) {
+            parts.push({
+              n: Number(/<PartNumber>(\d+)<\/PartNumber>/.exec(m[1])?.[1]),
+              etag: (/<ETag>([^<]*)<\/ETag>/.exec(m[1])?.[1] ?? "").replace(/&quot;/g, '"'),
+              size: Number(/<Size>(\d+)<\/Size>/.exec(m[1])?.[1] ?? 0),
+            });
+          }
+          if (!/<IsTruncated>true<\/IsTruncated>/.test(txt)) break;
+          marker = /<NextPartNumberMarker>(\d+)<\/NextPartNumberMarker>/.exec(txt)?.[1] ?? "";
+          if (!marker) break;
+        }
+        return json({ parts });
+      }
+      if (body.action === "mp-complete") {
+        const parts = (Array.isArray(body.parts) ? body.parts : []) as { n?: unknown; etag?: unknown }[];
+        const xml = "<CompleteMultipartUpload>" + parts
+          .map((p) => ({ n: Number(p.n), etag: String(p.etag ?? "").replace(/[<>&]/g, "") }))
+          .filter((p) => Number.isInteger(p.n) && p.n >= 1 && p.etag)
+          .sort((a, c) => a.n - c.n)
+          .map((p) => `<Part><PartNumber>${p.n}</PartNumber><ETag>${p.etag}</ETag></Part>`).join("") + "</CompleteMultipartUpload>";
+        const u = objectUrl(b, key);
+        u.searchParams.set("uploadId", uploadId);
+        const r = await b.client.fetch(u, { method: "POST", body: xml, headers: { "Content-Type": "application/xml" } });
+        const txt = await r.text();
+        if (!r.ok || /<Error>/.test(txt)) return json({ error: `Assemblage refusé (HTTP ${r.status}) : ${txt.slice(0, 300)}` }, 502);
+        return json({ ok: true });
+      }
+      if (body.action === "mp-abort") {
+        const u = objectUrl(b, key);
+        u.searchParams.set("uploadId", uploadId);
+        const r = await b.client.fetch(u, { method: "DELETE" });
+        if (sid) await supabase.rpc("release_storage", { p_storage: sid, p_size: Math.max(0, Number(body.size) || 0) });
+        return json({ ok: r.ok || r.status === 404 });
+      }
+      return json({ error: "Action inconnue" }, 400);
     }
 
     if (body.action === "release") {

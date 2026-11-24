@@ -67,6 +67,16 @@ export function objectUrl(b: Backend, key: string): URL {
   return new URL(`${b.base}/${path}`);
 }
 
+/** URL PUT pré-signée d'un morceau n d'un envoi en plusieurs morceaux. */
+export async function presignPart(b: Backend, key: string, uploadId: string, n: number, ttl: number): Promise<string> {
+  const url = objectUrl(b, key);
+  url.searchParams.set("partNumber", String(n));
+  url.searchParams.set("uploadId", uploadId);
+  url.searchParams.set("X-Amz-Expires", String(ttl));
+  const signed = await b.client.sign(new Request(url, { method: "PUT" }), { aws: { signQuery: true } });
+  return signed.url;
+}
+
 /** URL pré-signée (GET pour lire, PUT pour envoyer) valable `ttl` secondes. */
 export async function presign(b: Backend, key: string, method: "GET" | "PUT", ttl: number): Promise<string> {
   const url = objectUrl(b, key);
