@@ -80,7 +80,8 @@ data class Category(
     val name: String,
     val ranked: Boolean,
     val titleIds: List<String>,
-    /** Style des cartes choisi dans l'admin : "poster" (affiches), "accordion" (accordéon paysage), "warp" (carrousel incurvé). */
+    /** Style des cartes choisi dans l'admin : "poster" (affiches), "accordion" (accordéon paysage), "warp" (carrousel incurvé),
+     *  "halo" (affiches en halo animé), "zoom" (cartes en escalier). */
     val cardStyle: String = "poster",
     /** Style de section (pour l'instant "row" : rangée horizontale). */
     val sectionStyle: String = "row",

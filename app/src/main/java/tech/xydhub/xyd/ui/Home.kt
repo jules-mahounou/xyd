@@ -273,6 +273,8 @@ fun HomeScreen(onPlay: (String) -> Unit) {
                         c.sectionStyle == "banner" -> BannerRow(list, open)
                         c.cardStyle == "accordion" -> AccordionRow(list, open)
                         c.cardStyle == "warp" -> WarpCarousel(list, open)
+                        c.cardStyle == "halo" -> HaloReel(list, open)
+                        c.cardStyle == "zoom" -> ZoomSlider(list, open)
                         c.ranked -> RankedRow(list, c.numberPosition, open)
                         else -> PosterRow(list, open)
                     }
