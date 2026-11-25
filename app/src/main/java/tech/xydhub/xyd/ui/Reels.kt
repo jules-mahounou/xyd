@@ -258,7 +258,7 @@ fun ZoomSlider(titles: List<Title>, onClick: (Title) -> Unit) {
         val W = maxWidth
         val bigW = (W * 0.5f).coerceIn(150.dp, 280.dp)
         val bigH = bigW * 1.28f
-        val labelH = 40.dp
+        val labelH = 58.dp // titre + infos au-dessus de la carte active (assez haut pour ne rien couper)
         val peek = 34.dp
         val gap = 6.dp
         val stepPx = with(dens) { (bigW * 0.75f).toPx() }
@@ -313,19 +313,19 @@ fun ZoomSlider(titles: List<Title>, onClick: (Title) -> Unit) {
             // Titre au-dessus de la carte active.
             val t = titles[near]
             Column(
-                Modifier.align(Alignment.TopEnd).offset(x = -(peek + gap)).width(bigW).height(labelH).padding(bottom = 6.dp)
+                Modifier.align(Alignment.TopEnd).offset(x = -(peek + gap)).width(bigW).height(labelH).padding(bottom = 10.dp)
                     .graphicsLayer { alpha = textAlpha; translationY = (1f - textAlpha) * 6.dp.toPx() }
                     .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) { onClick(t) },
                 verticalArrangement = androidx.compose.foundation.layout.Arrangement.Bottom,
             ) {
                 Text(
-                    t.name.uppercase(), color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.2.sp,
+                    t.name.uppercase(), color = Color.White, fontSize = 14.sp, lineHeight = 18.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.2.sp,
                     maxLines = 1, overflow = TextOverflow.Ellipsis,
                 )
                 Text(
                     "%02d / %02d · %s".format(near + 1, n, metaOf(t)),
-                    color = Color.White.copy(alpha = 0.55f), fontSize = 10.sp, fontFamily = FontFamily.Monospace, maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
+                    color = Color.White.copy(alpha = 0.7f), fontSize = 11.sp, lineHeight = 15.sp, fontFamily = FontFamily.Monospace, maxLines = 1,
+                    overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 3.dp),
                 )
             }
         }
