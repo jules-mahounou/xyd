@@ -12,6 +12,7 @@ import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -168,6 +169,8 @@ fun HaloReel(titles: List<Title>, onClick: (Title) -> Unit) {
         val textAlpha = (1f - abs(st.p - floor(st.p + 0.5f)) * 2.4f).coerceIn(0f, 1f)
 
         Box(Modifier.fillMaxWidth().height(rowH).clipToBounds().reelDrag(st, stepPx, goTo)) {
+            // Ondulations bleues animées derrière le texte (sous les affiches).
+            WaveGlow(Modifier.align(Alignment.CenterEnd).width(W * 0.62f).fillMaxHeight())
             // Cartes du halo : de la plus lointaine à la plus proche (la carte de face est dessinée en dernier).
             val slots = (-3..4).map { k + it }
                 .filter { loop || it in 0 until n }

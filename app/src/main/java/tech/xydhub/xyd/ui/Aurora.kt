@@ -106,3 +106,73 @@ private val STREAKS = listOf(
     Streak(x = 0.61f, y = 0.60f, thick = 0.07f, alpha = 0.75f, color = BlueLight, drift = 0.05f, speed = 1f, phase = 0.6f, tilt = 1.0f), // filet lumineux
     Streak(x = 0.86f, y = 0.35f, thick = 0.40f, alpha = 0.10f, color = Blue, drift = 0.03f, speed = 1f, phase = 3.5f, tilt = 0.5f),   // reflet à droite
 )
+
+/**
+ * Ondulations de lumière bleue (mêmes bleus que [AuroraBand]) : plusieurs filets en vagues qui
+ * ondulent et se croisent lentement, avec une lueur diffuse. Fond du texte du style « halo ».
+ * 100 % Canvas, boucle sans couture, fondu sur tous les bords.
+ */
+@Composable
+fun WaveGlow(modifier: Modifier = Modifier) {
+    val t by rememberInfiniteTransition(label = "waves").animateFloat(
+        initialValue = 0f,
+        targetValue = TWO_PI,
+        animationSpec = infiniteRepeatable(tween(WAVE_MS, easing = LinearEasing)),
+        label = "waves-t",
+    )
+    Canvas(modifier.graphicsLayer(compositingStrategy = CompositingStrategy.Offscreen)) {
+        val w = size.width
+        val h = size.height
+        // Lueur de fond qui respire doucement.
+        drawRect(
+            Brush.radialGradient(
+                0f to BlueDeep.copy(alpha = 0.20f + 0.06f * sin(t)),
+                1f to Color.Transparent,
+                center = Offset(w * (0.55f + 0.06f * sin(t + 1f)), h * 0.5f),
+                radius = w * 0.75f,
+            ),
+        )
+        val path = androidx.compose.ui.graphics.Path()
+        for (wv in WAVES) {
+            path.reset()
+            val steps = 48
+            for (i in 0..steps) {
+                val u = i / steps.toFloat()
+                val x = w * (-0.1f + 1.2f * u)
+                // Deux sinus superposés : vague principale + petite ondulation qui « frémit ».
+                val y = h * (wv.y + wv.amp * sin(u * wv.freq * TWO_PI + t * wv.speed + wv.phase)
+                    + wv.amp * 0.35f * sin(u * wv.freq * 2.3f * TWO_PI - t * wv.speed * 2f + wv.phase * 1.7f))
+                if (i == 0) path.moveTo(x, y) else path.lineTo(x, y)
+            }
+            val breathe = 0.75f + 0.25f * sin(t * 2f + wv.phase)
+            // Halo large et diffus, puis le filet net par-dessus.
+            drawPath(path, wv.color.copy(alpha = wv.alpha * 0.22f * breathe), style = androidx.compose.ui.graphics.drawscope.Stroke(width = wv.width * 9f * density))
+            drawPath(path, wv.color.copy(alpha = wv.alpha * 0.45f * breathe), style = androidx.compose.ui.graphics.drawscope.Stroke(width = wv.width * 3f * density))
+            drawPath(path, wv.color.copy(alpha = wv.alpha * breathe), style = androidx.compose.ui.graphics.drawscope.Stroke(width = wv.width * density))
+        }
+        // Fondus : vers la gauche (les affiches), en haut et en bas.
+        drawRect(
+            Brush.horizontalGradient(0f to Color.Transparent, 0.35f to Color.Black, 0.9f to Color.Black, 1f to Color.Transparent),
+            blendMode = BlendMode.DstIn,
+        )
+        drawRect(
+            Brush.verticalGradient(0f to Color.Transparent, 0.25f to Color.Black, 0.75f to Color.Black, 1f to Color.Transparent),
+            blendMode = BlendMode.DstIn,
+        )
+    }
+}
+
+private const val WAVE_MS = 8000
+
+private class Wave(
+    val y: Float, val amp: Float, val freq: Float, val speed: Float, val phase: Float,
+    val width: Float, val alpha: Float, val color: Color,
+)
+
+private val WAVES = listOf(
+    Wave(y = 0.30f, amp = 0.07f, freq = 0.9f, speed = 1f, phase = 0.0f, width = 1.2f, alpha = 0.55f, color = Blue),
+    Wave(y = 0.42f, amp = 0.10f, freq = 0.7f, speed = 1f, phase = 1.3f, width = 1.6f, alpha = 0.80f, color = BlueLight),
+    Wave(y = 0.52f, amp = 0.08f, freq = 1.1f, speed = 2f, phase = 2.4f, width = 1.0f, alpha = 0.50f, color = Blue),
+    Wave(y = 0.63f, amp = 0.11f, freq = 0.6f, speed = 1f, phase = 3.6f, width = 1.4f, alpha = 0.65f, color = BlueDeep),
+    Wave(y = 0.74f, amp = 0.06f, freq = 1.3f, speed = 1f, phase = 4.8f, width = 0.9f, alpha = 0.40f, color = BlueLight),
+)
