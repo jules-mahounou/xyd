@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
@@ -107,72 +108,126 @@ private val STREAKS = listOf(
     Streak(x = 0.86f, y = 0.35f, thick = 0.40f, alpha = 0.10f, color = Blue, drift = 0.03f, speed = 1f, phase = 3.5f, tilt = 0.5f),   // reflet à droite
 )
 
+
 /**
- * Ondulations de lumière bleue (mêmes bleus que [AuroraBand]) : plusieurs filets en vagues qui
- * ondulent et se croisent lentement, avec une lueur diffuse. Fond du texte du style « halo ».
- * 100 % Canvas, boucle sans couture, fondu sur tous les bords.
+ * Vapeur bleue qui tourbillonne, monte et se dissipe (mêmes bleus que [AuroraBand]).
+ * Fond du texte du style « halo ».
+ *
+ * Android 13+ : shader AGSL (bruit fractal « domain warping » : la fumée se replie sur elle-même,
+ * des volutes naissent, s'étirent et s'effacent). Ailleurs, ou si le shader ne compile pas :
+ * bouffées de vapeur douces qui montent, gonflent et s'évaporent.
  */
 @Composable
-fun WaveGlow(modifier: Modifier = Modifier) {
-    val t by rememberInfiniteTransition(label = "waves").animateFloat(
-        initialValue = 0f,
-        targetValue = TWO_PI,
-        animationSpec = infiniteRepeatable(tween(WAVE_MS, easing = LinearEasing)),
-        label = "waves-t",
-    )
-    Canvas(modifier.graphicsLayer(compositingStrategy = CompositingStrategy.Offscreen)) {
-        val w = size.width
-        val h = size.height
-        // Lueur de fond qui respire doucement.
-        drawRect(
-            Brush.radialGradient(
-                0f to BlueDeep.copy(alpha = 0.20f + 0.06f * sin(t)),
-                1f to Color.Transparent,
-                center = Offset(w * (0.55f + 0.06f * sin(t + 1f)), h * 0.5f),
-                radius = w * 0.75f,
-            ),
-        )
-        val path = androidx.compose.ui.graphics.Path()
-        for (wv in WAVES) {
-            path.reset()
-            val steps = 48
-            for (i in 0..steps) {
-                val u = i / steps.toFloat()
-                val x = w * (-0.1f + 1.2f * u)
-                // Deux sinus superposés : vague principale + petite ondulation qui « frémit ».
-                val y = h * (wv.y + wv.amp * sin(u * wv.freq * TWO_PI + t * wv.speed + wv.phase)
-                    + wv.amp * 0.35f * sin(u * wv.freq * 2.3f * TWO_PI - t * wv.speed * 2f + wv.phase * 1.7f))
-                if (i == 0) path.moveTo(x, y) else path.lineTo(x, y)
-            }
-            val breathe = 0.75f + 0.25f * sin(t * 2f + wv.phase)
-            // Halo large et diffus, puis le filet net par-dessus.
-            drawPath(path, wv.color.copy(alpha = wv.alpha * 0.22f * breathe), style = androidx.compose.ui.graphics.drawscope.Stroke(width = wv.width * 9f * density))
-            drawPath(path, wv.color.copy(alpha = wv.alpha * 0.45f * breathe), style = androidx.compose.ui.graphics.drawscope.Stroke(width = wv.width * 3f * density))
-            drawPath(path, wv.color.copy(alpha = wv.alpha * breathe), style = androidx.compose.ui.graphics.drawscope.Stroke(width = wv.width * density))
+fun VaporGlow(modifier: Modifier = Modifier) {
+    var time by androidx.compose.runtime.remember { androidx.compose.runtime.mutableFloatStateOf(0f) }
+    androidx.compose.runtime.LaunchedEffect(Unit) {
+        val start = androidx.compose.runtime.withFrameNanos { it }
+        while (true) {
+            androidx.compose.runtime.withFrameNanos { time = ((it - start) / 1e9f) % 3600f }
         }
-        // Fondus : vers la gauche (les affiches), en haut et en bas.
+    }
+    val vapor = androidx.compose.runtime.remember {
+        if (android.os.Build.VERSION.SDK_INT >= 33) runCatching { VaporShader() }.getOrNull() else null
+    }
+    Canvas(modifier.graphicsLayer(compositingStrategy = CompositingStrategy.Offscreen)) {
+        if (vapor != null) {
+            drawRect(vapor.brush(size.width, size.height, time, density))
+        } else {
+            drawPuffs(time)
+        }
+        // Fondus : côté affiches, en haut et en bas.
         drawRect(
-            Brush.horizontalGradient(0f to Color.Transparent, 0.35f to Color.Black, 0.9f to Color.Black, 1f to Color.Transparent),
+            Brush.horizontalGradient(0f to Color.Transparent, 0.3f to Color.Black, 0.92f to Color.Black, 1f to Color.Transparent),
             blendMode = BlendMode.DstIn,
         )
         drawRect(
-            Brush.verticalGradient(0f to Color.Transparent, 0.25f to Color.Black, 0.75f to Color.Black, 1f to Color.Transparent),
+            Brush.verticalGradient(0f to Color.Transparent, 0.22f to Color.Black, 0.8f to Color.Black, 1f to Color.Transparent),
             blendMode = BlendMode.DstIn,
         )
     }
 }
 
-private const val WAVE_MS = 8000
+@androidx.annotation.RequiresApi(33)
+private class VaporShader {
+    private val shader = android.graphics.RuntimeShader(VAPOR_AGSL)
+    private val brush = androidx.compose.ui.graphics.ShaderBrush(shader)
+    fun brush(w: Float, h: Float, t: Float, density: Float): Brush {
+        shader.setFloatUniform("res", w, h)
+        shader.setFloatUniform("t", t)
+        shader.setFloatUniform("scale", 1f / (110f * density)) // une volute ≈ 110 dp, quelle que soit la densité d'écran
+        return brush
+    }
+}
 
-private class Wave(
-    val y: Float, val amp: Float, val freq: Float, val speed: Float, val phase: Float,
-    val width: Float, val alpha: Float, val color: Color,
-)
+private const val VAPOR_AGSL = """
+uniform float2 res;
+uniform float t;
+uniform float scale;
 
-private val WAVES = listOf(
-    Wave(y = 0.30f, amp = 0.07f, freq = 0.9f, speed = 1f, phase = 0.0f, width = 1.2f, alpha = 0.55f, color = Blue),
-    Wave(y = 0.42f, amp = 0.10f, freq = 0.7f, speed = 1f, phase = 1.3f, width = 1.6f, alpha = 0.80f, color = BlueLight),
-    Wave(y = 0.52f, amp = 0.08f, freq = 1.1f, speed = 2f, phase = 2.4f, width = 1.0f, alpha = 0.50f, color = Blue),
-    Wave(y = 0.63f, amp = 0.11f, freq = 0.6f, speed = 1f, phase = 3.6f, width = 1.4f, alpha = 0.65f, color = BlueDeep),
-    Wave(y = 0.74f, amp = 0.06f, freq = 1.3f, speed = 1f, phase = 4.8f, width = 0.9f, alpha = 0.40f, color = BlueLight),
-)
+float hash(float2 p) {
+    p = fract(p * float2(123.34, 456.21));
+    p += dot(p, p + 45.32);
+    return fract(p.x * p.y);
+}
+float noise(float2 p) {
+    float2 i = floor(p);
+    float2 f = fract(p);
+    float2 u = f * f * (3.0 - 2.0 * f);
+    return mix(mix(hash(i), hash(i + float2(1.0, 0.0)), u.x),
+               mix(hash(i + float2(0.0, 1.0)), hash(i + float2(1.0, 1.0)), u.x), u.y);
+}
+float fbm(float2 p) {
+    float v = 0.0;
+    float a = 0.5;
+    for (int i = 0; i < 5; i++) {
+        v += a * noise(p);
+        p = float2(1.6 * p.x + 1.2 * p.y, -1.2 * p.x + 1.6 * p.y) + float2(1.7, 9.2);
+        a *= 0.5;
+    }
+    return v;
+}
+
+half4 main(float2 fc) {
+    float2 p = fc * scale;
+    // La vapeur monte (le motif glisse vers le haut) et dérive un peu de côté.
+    p += float2(sin(t * 0.07) * 0.6, t * 0.16);
+    // Repliement du bruit sur lui-même : volutes qui tourbillonnent.
+    float2 q = float2(fbm(p + float2(0.0, t * 0.05)), fbm(p + float2(5.2, 1.3) - t * 0.04));
+    float2 r = float2(fbm(p + 3.6 * q + float2(1.7, 9.2) + t * 0.11),
+                      fbm(p + 3.6 * q + float2(8.3, 2.8) - t * 0.09));
+    float f = fbm(p + 3.2 * r);
+    // Nappes de densité qui apparaissent puis s'évaporent lentement.
+    float life = smoothstep(0.18, 0.62, fbm(p * 0.45 + float2(t * 0.035, -t * 0.02) + 11.0));
+    float d = smoothstep(0.38, 0.88, f) * life;
+    d = pow(d, 1.4);
+    half3 deep = half3(0.18, 0.28, 0.90);
+    half3 blue = half3(0.30, 0.42, 1.00);
+    half3 light = half3(0.62, 0.70, 1.00);
+    half3 col = mix(deep, blue, half(clamp(length(q) * 1.1, 0.0, 1.0)));
+    col = mix(col, light, half(clamp(r.x * r.x * 1.6, 0.0, 1.0)));
+    half a = half(clamp(d * 1.5, 0.0, 0.8));
+    return half4(col * a, a);
+}
+"""
+
+/** Repli (avant Android 13) : bouffées de vapeur qui montent, gonflent, ondulent et s'évaporent. */
+private fun androidx.compose.ui.graphics.drawscope.DrawScope.drawPuffs(t: Float) {
+    val w = size.width
+    val h = size.height
+    for (i in 0 until PUFFS) {
+        val life = 7f + (i % 4) * 1.3f
+        val age = ((t + i * 0.83f) % life) / life           // 0 → 1 sur la vie de la bouffée
+        val seed = (i * 37 % 100) / 100f
+        val x = w * (0.25f + 0.65f * seed) + w * 0.08f * sin(t * 0.6f + i)
+        val y = h * (1.05f - age * 1.1f)
+        val r = w * (0.10f + 0.28f * age)
+        val a = 0.32f * sin(age * PI.toFloat()) * (0.7f + 0.3f * sin(t * 1.7f + i * 2f))
+        val c = when (i % 3) { 0 -> BlueDeep; 1 -> Blue; else -> BlueLight }
+        drawCircle(
+            Brush.radialGradient(0f to c.copy(alpha = a), 0.55f to c.copy(alpha = a * 0.35f), 1f to Color.Transparent, center = Offset(x, y), radius = r),
+            radius = r, center = Offset(x, y),
+        )
+    }
+}
+
+private const val PUFFS = 16
