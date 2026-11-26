@@ -2001,7 +2001,8 @@ function storageCard() {
       quota: h("input", { type: "number", step: "0.1", min: "0.1", value: x ? (x.quota_bytes / 1e9).toFixed(1) : "9.5" }),
       priority: h("input", { type: "number", value: x?.priority ?? (Math.max(0, ...storages.map((y) => y.priority)) + 1) }),
       active: h("input", { type: "checkbox", checked: x ? x.active : true }),
-      billable: h("input", { type: "checkbox", checked: x ? isBillable(x) : true }),
+      // Nouveau stockage : R2 par défaut, donc non facturable (sortie gratuite). Backblaze : coché.
+      billable: h("input", { type: "checkbox", checked: x ? isBillable(x) : false }),
       egress: h("input", { type: "number", min: "0", step: "50", value: x ? Math.round(egressCap(x) / 1e6) : 900 }),
       classB: h("input", { type: "number", min: "0", value: x ? classBCap(x) : 2250 }),
       classC: h("input", { type: "number", min: "0", value: x ? classCCap(x) : 2250 }),
@@ -2292,13 +2293,13 @@ function eventsCard() {
     const media = h("select", {},
       h("option", { value: "" }, "— Choisir le film ou l'épisode projeté —"),
       ...opts.map((o) => h("option", { value: o.id, selected: o.id === e.media_id, disabled: !o.free && o.id !== e.media_id },
-        `${o.label}${o.free ? "" : " · " + o.name + " (Backblaze : non autorisé)"}`)));
+        `${o.label} · ${o.name}${o.free ? "" : " (stockage facturable : non autorisé)"}`)));
     const note = h("p", { class: "muted", style: { fontSize: "12px", margin: "6px 0 0" } });
     const upd = () => {
       const o = opts.find((x) => x.id === media.value);
       const n = Math.max(e.event_participants?.[0]?.count || 0, 30);
       note.textContent = !o ? "Seuls les contenus rangés sur un stockage R2 (sortie gratuite) sont proposés : une soirée fait télécharger le même fichier à tous les inscrits."
-        : !o.free ? `⚠ Ce contenu est sur ${o.name} (Backblaze, sortie payante) : envoie-le sur un stockage R2 avant la soirée.`
+        : !o.free ? `⚠ Ce contenu est sur ${o.name}, marqué facturable (budget gratuit limité par jour) : envoie-le sur un stockage non facturable avant la soirée.`
         : `Stockage ${o.name} (sortie gratuite) · ${fmtSize(o.size) || "taille ?"} par personne · ${n} inscrits ≈ ${fmtSize((o.size || 0) * n)} téléchargés, 0 €.`;
     };
     media.onchange = upd; upd();
