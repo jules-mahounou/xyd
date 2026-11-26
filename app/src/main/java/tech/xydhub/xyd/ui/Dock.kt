@@ -151,10 +151,24 @@ fun BottomDock(
                 lineTo(size.width, baseY)
                 close()
             }
-            // Bosse en noir pur, sans bordure ; légèrement translucide pour laisser deviner le flou derrière.
+            // Bosse en noir pur, légèrement translucide pour laisser deviner le flou derrière.
             drawPath(mound, Color(0xE0000000))
-            drawCircle(Color(0xE6050506), r, Offset(cx, logoY))
-            drawCircle(Color.White.copy(alpha = 0.35f + 0.35f * glow), r, Offset(cx, logoY), style = Stroke(1.2.dp.toPx()))
+            // Liseré seulement sur les deux flancs du haut (aucun trait le long du bas de l'écran).
+            val ridge = Path().apply {
+                for (k in 0..60) {
+                    val x = k / 60f * size.width
+                    val y = curveY(abs(x - cx) / half)
+                    if (k == 0) moveTo(x, y) else lineTo(x, y)
+                }
+            }
+            drawPath(
+                ridge,
+                Brush.horizontalGradient(0f to Color.White.copy(alpha = 0.06f), 0.5f to Color.White.copy(alpha = 0.55f), 1f to Color.White.copy(alpha = 0.06f)),
+                style = Stroke(1.dp.toPx()),
+            )
+            val rr = r * (1f + 0.24f * glow)
+            drawCircle(Color(0xE6050506), rr, Offset(cx, logoY))
+            drawCircle(Color.White.copy(alpha = 0.35f + 0.35f * glow), rr, Offset(cx, logoY), style = Stroke(1.2.dp.toPx()))
         }
 
         // Icônes : sortent du logo et glissent le long de la bosse, du flou au net.
@@ -166,10 +180,13 @@ fun BottomDock(
                 val u = abs(slots[i])
                 val target = minOf(curveY(u) - lift, floor)
                 val cy = logoY + (target - logoY) * t
+                // Du centre vers les bords : les icônes proches du logo sont plus grosses que celles des bords.
+                val btn = if (u < 0.5f) 44.dp else 36.dp
+                val halfBtn = with(dens) { (btn / 2).toPx() }
                 DockButton(
-                    a, t,
+                    a, t, btn,
                     Modifier.align(Alignment.TopCenter).offset {
-                        IntOffset((slots[i] * (w / 2f) * t).roundToInt(), (cy - with(dens) { 20.dp.toPx() }).roundToInt())
+                        IntOffset((slots[i] * (w / 2f) * t).roundToInt(), (cy - halfBtn).roundToInt())
                     },
                 )
             }
@@ -187,7 +204,8 @@ fun BottomDock(
             Logo(
                 24.dp,
                 Modifier.graphicsLayer {
-                    val s = 1f - 0.16f * press.value
+                    // Ouvert : le logo grandit (le plus gros de la barre) ; à chaque toucher, petit enfoncement élastique.
+                    val s = (1f + 0.26f * glow) * (1f - 0.16f * press.value)
                     scaleX = s; scaleY = s
                 },
             )
@@ -196,8 +214,7 @@ fun BottomDock(
 }
 
 @Composable
-private fun DockButton(a: DockAction, t: Float, modifier: Modifier) {
-    val size: Dp = 40.dp
+private fun DockButton(a: DockAction, t: Float, size: Dp, modifier: Modifier) {
     Box(
         modifier.size(size)
             .graphicsLayer {
@@ -217,7 +234,7 @@ private fun DockButton(a: DockAction, t: Float, modifier: Modifier) {
             .semantics { contentDescription = a.label },
         contentAlignment = Alignment.Center,
     ) {
-        Icon(a.icon, null, tint = Color.White, modifier = Modifier.size(21.dp))
+        Icon(a.icon, null, tint = Color.White, modifier = Modifier.size(size * 0.5f))
         if (a.badge > 0) {
             Box(
                 Modifier.align(Alignment.TopEnd).size(15.dp).clip(CircleShape).background(Xyd.Grey),
