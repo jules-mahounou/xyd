@@ -41,6 +41,27 @@ object Http {
         }
     }
 
+    /** Envoi binaire (photo de profil vers Supabase Storage). */
+    suspend fun upload(url: String, headers: Map<String, String>, bytes: ByteArray, contentType: String): Response =
+        withContext(Dispatchers.IO) {
+            val c = URL(url).openConnection() as HttpURLConnection
+            try {
+                c.requestMethod = "POST"
+                c.connectTimeout = 15_000
+                c.readTimeout = 60_000
+                headers.forEach { (k, v) -> c.setRequestProperty(k, v) }
+                c.setRequestProperty("Content-Type", contentType)
+                c.doOutput = true
+                c.setFixedLengthStreamingMode(bytes.size)
+                c.outputStream.use { it.write(bytes) }
+                val code = c.responseCode
+                val stream = if (code >= 400) c.errorStream else c.inputStream
+                Response(code, stream?.bufferedReader()?.use { it.readText() } ?: "")
+            } finally {
+                c.disconnect()
+            }
+        }
+
     /** Extrait un message lisible d'une erreur Supabase (GoTrue / PostgREST / Edge). */
     fun errorMessage(r: Response): String {
         val raw = runCatching {

@@ -854,9 +854,8 @@ fun SettingsSheet(onDismiss: () -> Unit) {
             Text("Réglages", fontSize = 20.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(vertical = 8.dp))
 
             session?.let {
-                Label("Compte")
-                Text(it.name, fontSize = 16.sp, fontWeight = FontWeight.Medium)
-                Text(it.email, color = Xyd.Muted, fontSize = 13.sp)
+                Label("Profil")
+                ProfileEditor()
             }
 
             Label("Orientation du lecteur")

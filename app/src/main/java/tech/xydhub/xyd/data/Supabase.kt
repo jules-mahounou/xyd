@@ -140,6 +140,40 @@ object Supabase {
     )
 
     /** Statut du compte connecté : "active" ou "blocked" (null si inconnu). */
+    // ---------- Profil (pseudo + photo) ----------
+
+    suspend fun myProfile(userId: String): Person? = runCatching {
+        val a = org.json.JSONArray(authedOk("/rest/v1/profiles?select=name,email,avatar_url&user_id=eq.$userId"))
+        if (a.length() == 0) null else a.getJSONObject(0).let {
+            Person(it.optString("name").ifBlank { it.optString("email").substringBefore('@') }, it.optString("avatar_url").takeIf { u -> u.startsWith("http") })
+        }
+    }.getOrNull()
+
+    suspend fun updateProfile(name: String?, avatar: String?, clearAvatar: Boolean = false): Person {
+        val body = JSONObject().put("p_name", name ?: JSONObject.NULL).put("p_avatar", avatar ?: JSONObject.NULL).put("p_clear_avatar", clearAvatar)
+        val o = JSONObject(authedOk("/rest/v1/rpc/update_my_profile", "POST", body.toString()))
+        return Person(o.optString("name"), o.optString("avatar_url").takeIf { it.startsWith("http") })
+    }
+
+    /** Envoie la photo dans avatars/<id>/… et retourne son URL publique. */
+    suspend fun uploadAvatar(userId: String, jpeg: ByteArray): String {
+        val path = "$userId/${System.currentTimeMillis()}.jpg"
+        var token = accessToken()
+        var r = Http.upload("$url/storage/v1/object/avatars/$path", anon + ("Authorization" to "Bearer $token"), jpeg, "image/jpeg")
+        if (r.code == 401 || r.code == 403 && r.body.contains("jwt", true)) {
+            token = accessToken(forceRefresh = true)
+            r = Http.upload("$url/storage/v1/object/avatars/$path", anon + ("Authorization" to "Bearer $token"), jpeg, "image/jpeg")
+        }
+        if (!r.ok) throw Http.ApiException(r.code, Http.errorMessage(r))
+        return "$url/storage/v1/object/public/avatars/$path"
+    }
+
+    /** Supprime une ancienne photo (seulement les siennes : le stockage le vérifie). */
+    suspend fun deleteAvatar(publicUrl: String) {
+        val path = publicUrl.substringAfter("/storage/v1/object/public/avatars/", "").ifBlank { return }
+        runCatching { authed("/storage/v1/object/avatars/$path", "DELETE") }
+    }
+
     // ---------- Soirées ciné ----------
 
     suspend fun upcomingEvents(): String = authedOk("/rest/v1/rpc/upcoming_events", "POST", "{}")

@@ -36,6 +36,9 @@ object Repo {
     /** Annonces publiées, par id. */
     private val _ads = MutableStateFlow<Map<String, Announcement>>(emptyMap())
     val ads: StateFlow<Map<String, Announcement>> = _ads
+    /** Mon profil (pseudo + photo), chargé avec le catalogue. */
+    val profile = MutableStateFlow<Person?>(null)
+
     /** Soirées ciné à venir ou en cours (vide si la fonctionnalité n'est pas encore en base). */
     val events = MutableStateFlow<List<CineEvent>>(emptyList())
     val loading = MutableStateFlow(false)
@@ -135,6 +138,7 @@ object Repo {
                 // Annonces : facultatives aussi (table absente = aucune annonce).
                 runCatching { _ads.value = Parse.announcements(Supabase.fetchAnnouncements()).associateBy { it.id } }
                 refreshEvents()
+                _session.value?.let { s -> Supabase.myProfile(s.userId)?.let { profile.value = it } }
                 runCatching {
                     val cj = Supabase.fetchCategories()
                     _categories.value = Parse.categories(cj)
@@ -149,6 +153,23 @@ object Repo {
         }
     }
 
+    /** Nouveau pseudo et/ou nouvelle photo (JPEG déjà recadré). Lève une exception lisible en cas d'échec. */
+    suspend fun saveProfile(name: String?, photo: ByteArray?, removePhoto: Boolean = false) {
+        val s = _session.value ?: throw Http.ApiException(401, "Non connecté")
+        val old = profile.value?.avatar
+        val url = photo?.let { Supabase.uploadAvatar(s.userId, it) }
+        val p = try {
+            Supabase.updateProfile(name, url, clearAvatar = removePhoto && url == null)
+        } catch (e: Exception) {
+            url?.let { Supabase.deleteAvatar(it) }
+            throw e
+        }
+        profile.value = p
+        if (p.name.isNotBlank() && p.name != s.name) saveSession(s.copy(name = p.name))
+        if (old != null && old != p.avatar) Supabase.deleteAvatar(old)
+        refreshEvents()
+    }
+
     suspend fun refreshEvents() {
         runCatching { events.value = Parse.events(Supabase.upcomingEvents()) }
     }
@@ -156,12 +177,12 @@ object Repo {
     /** Inscription / désinscription à une soirée (mise à jour immédiate de l'affichage, puis confirmation serveur). */
     fun setJoined(e: CineEvent, join: Boolean, onDone: (Boolean) -> Unit = {}) {
         val s = _session.value ?: return
-        val me = s.name
+        val me = Person(profile.value?.name ?: s.name, profile.value?.avatar)
         events.value = events.value.map {
             if (it.id != e.id) it else it.copy(
                 joined = join,
                 count = (it.count + if (join) 1 else -1).coerceAtLeast(0),
-                people = if (join) listOf(me) + it.people.filter { n -> n != me } else it.people.filter { n -> n != me },
+                people = if (join) listOf(me) + it.people.filter { n -> n.name != me.name } else it.people.filter { n -> n.name != me.name },
             )
         }
         scope.launch {

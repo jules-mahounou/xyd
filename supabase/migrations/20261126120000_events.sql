@@ -1,6 +1,9 @@
 -- Soirées ciné : événements programmés par l'admin, auxquels les utilisateurs s'inscrivent.
 -- Rejoué à chaque déploiement : tout est idempotent.
 
+-- Photo de profil (voir 20261126170000_profile_avatar.sql), déjà utilisée par upcoming_events() ci-dessous.
+alter table public.profiles add column if not exists avatar_url text;
+
 create table if not exists public.events (
   id          uuid primary key default gen_random_uuid(),
   title       text not null,
@@ -60,8 +63,8 @@ returns jsonb language sql stable security definer set search_path = '' as $$
       'count', (select count(*) from public.event_participants p where p.event_id = e.id),
       'joined', exists (select 1 from public.event_participants p where p.event_id = e.id and p.user_id = auth.uid()),
       'people', coalesce((
-        select jsonb_agg(n) from (
-          select coalesce(nullif(pr.name, ''), split_part(pr.email, '@', 1)) as n
+        select jsonb_agg(jsonb_build_object('n', n, 'a', av)) from (
+          select coalesce(nullif(pr.name, ''), split_part(pr.email, '@', 1)) as n, pr.avatar_url as av
             from public.event_participants p join public.profiles pr on pr.user_id = p.user_id
            where p.event_id = e.id
            order by (p.user_id = auth.uid()) desc, p.joined_at desc

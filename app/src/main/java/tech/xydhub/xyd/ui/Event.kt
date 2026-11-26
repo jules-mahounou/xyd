@@ -383,7 +383,7 @@ private fun <T> List<T>.rotate(n: Int): List<T> = if (isEmpty()) this else (indi
 // ---------------------------------------------------------------- participants
 
 @Composable
-private fun AvatarGroup(people: List<String>, count: Int) {
+private fun AvatarGroup(people: List<tech.xydhub.xyd.data.Person>, count: Int) {
     val shown = people.take(4)
     val extra = (count - shown.size).coerceAtLeast(0)
     val size = 34.dp
@@ -391,8 +391,8 @@ private fun AvatarGroup(people: List<String>, count: Int) {
     val n = shown.size + if (extra > 0) 1 else 0
     if (n == 0) return
     Box(Modifier.width(size + step * (n - 1)).height(size)) {
-        shown.forEachIndexed { i, name ->
-            Avatar(name, size, Modifier.offset(x = step * i))
+        shown.forEachIndexed { i, p ->
+            UserAvatar(p.name, p.avatar, size, Modifier.offset(x = step * i))
         }
         if (extra > 0) {
             Box(
@@ -404,19 +404,22 @@ private fun AvatarGroup(people: List<String>, count: Int) {
     }
 }
 
+/** Pastille de profil : la photo si l'utilisateur en a mis une, sinon son initiale sur un dégradé. */
 @Composable
-private fun Avatar(name: String, size: Dp, modifier: Modifier) {
+fun UserAvatar(name: String, avatar: String?, size: Dp, modifier: Modifier = Modifier, ring: Color = Color.Black) {
     val hue = (name.lowercase().hashCode() and 0x7fffffff) % 360
     val c1 = Color.hsv(hue.toFloat(), 0.55f, 0.95f)
     val c2 = Color.hsv(((hue + 50) % 360).toFloat(), 0.7f, 0.55f)
     Box(
         modifier.size(size).clip(CircleShape).background(Brush.linearGradient(listOf(c1, c2)))
-            .border(2.dp, Color.Black, CircleShape),
+            .border(2.dp, ring, CircleShape),
         contentAlignment = Alignment.Center,
     ) {
         Text(
-            name.trim().take(1).uppercase().ifBlank { "?" }, color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Bold,
+            name.trim().take(1).uppercase().ifBlank { "?" }, color = Color.White,
+            fontSize = (size.value * 0.4f).sp, fontWeight = FontWeight.Bold,
         )
+        if (avatar != null) RemoteImage(avatar, Modifier.fillMaxSize().clip(CircleShape), background = Color.Transparent)
     }
 }
 

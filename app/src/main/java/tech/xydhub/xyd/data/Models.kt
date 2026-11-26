@@ -154,6 +154,9 @@ data class UserRequest(
     val createdAt: String,
 )
 
+/** Personne affichée (pseudo + photo facultative). */
+data class Person(val name: String, val avatar: String?)
+
 /** Soirée ciné programmée dans l'admin. */
 data class CineEvent(
     val id: String,
@@ -165,7 +168,7 @@ data class CineEvent(
     val mediaId: String?,
     val count: Int,
     val joined: Boolean,
-    val people: List<String>,
+    val people: List<Person>,
 ) {
     fun live(now: Long = System.currentTimeMillis()) = now in startsAt until endsAt
 }
@@ -186,7 +189,12 @@ object Parse {
                     mediaId = o.optString("media_id").takeIf { it.length > 30 },
                     count = o.optInt("count"),
                     joined = o.optBoolean("joined"),
-                    people = o.optJSONArray("people")?.let { p -> (0 until p.length()).map { p.optString(it) } }.orEmpty(),
+                    people = o.optJSONArray("people")?.let { p ->
+                        (0 until p.length()).map { i ->
+                            p.optJSONObject(i)?.let { Person(it.optString("n"), it.optString("a").takeIf { a -> a.startsWith("http") }) }
+                                ?: Person(p.optString(i), null)
+                        }
+                    }.orEmpty(),
                 )
             }.getOrNull()
         }
