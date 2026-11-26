@@ -239,11 +239,12 @@ fun HomeScreen(onPlay: (String) -> Unit) {
     val dens = LocalDensity.current
     // Flou progressif du contenu derrière la barre : léger fermée, plus fort ouverte.
     val blurPx by androidx.compose.animation.core.animateFloatAsState(
-        when { !dockVisible -> 0f; dockOpen -> with(dens) { 18.dp.toPx() }; else -> with(dens) { 7.dp.toPx() } },
+        when { !dockVisible -> 0f; dockOpen -> with(dens) { 13.dp.toPx() }; else -> with(dens) { 6.dp.toPx() } },
         androidx.compose.animation.core.tween(320), label = "dock-blur",
     )
     var listSize by remember { mutableStateOf(androidx.compose.ui.unit.IntSize.Zero) }
-    val bandPx = with(dens) { (DOCK_HEIGHT + 30.dp).toPx() } + WindowInsets.navigationBars.getBottom(dens)
+    // Bande de flou plus haute que la barre : la transition net → flou s'étale en douceur.
+    val bandPx = with(dens) { (DOCK_HEIGHT + 90.dp).toPx() } + WindowInsets.navigationBars.getBottom(dens)
     val blurEffect = remember(listSize, (blurPx / 2f).toInt()) {
         progressiveBlurEffect(listSize.width.toFloat(), listSize.height.toFloat(), bandPx, blurPx)
     }

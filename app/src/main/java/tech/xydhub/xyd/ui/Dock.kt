@@ -271,18 +271,21 @@ uniform float amount;
 half4 main(float2 p) {
     float start = size.y - band;
     if (p.y < start) return content.eval(p);
+    // Rampe douce (smoothstep au carré) : le flou naît très progressivement en haut de la bande.
     float t = clamp((p.y - start) / band, 0.0, 1.0);
-    float r = amount * t * t;
-    if (r < 0.5) return content.eval(p);
-    half4 c = content.eval(p) * 0.16;
-    float wsum = 0.16;
-    // Deux anneaux de 8 échantillons : flou doux et bon marché.
-    for (int i = 0; i < 8; i++) {
-        float a = float(i) * 0.785398;
-        float2 d = float2(cos(a), sin(a));
-        c += content.eval(p + d * r) * 0.06;
-        c += content.eval(p + d * r * 0.5 + float2(-d.y, d.x) * r * 0.2) * 0.045;
-        wsum += 0.105;
+    t = t * t * (3.0 - 2.0 * t);
+    float r = amount * t;
+    if (r < 0.6) return content.eval(p);
+    // Spirale de 24 échantillons (angle d'or), pondérés en cloche : flou lisse, sans grain ni damier.
+    half4 c = half4(0.0);
+    float wsum = 0.0;
+    for (int i = 0; i < 24; i++) {
+        float fi = float(i) + 0.5;
+        float rr = r * sqrt(fi / 24.0);
+        float a = fi * 2.39996;
+        float w = exp(-2.0 * (rr * rr) / (r * r));
+        c += content.eval(p + float2(cos(a), sin(a)) * rr) * w;
+        wsum += w;
     }
     return c / wsum;
 }
