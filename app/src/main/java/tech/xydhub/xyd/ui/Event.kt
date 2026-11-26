@@ -34,6 +34,8 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableLongStateOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
@@ -124,9 +126,39 @@ fun EventSection(e: CineEvent, downloads: Map<String, DownloadItem>, onPlay: (St
         onPlay(p.mediaId)
     }
 
+    // Ligne d'état (téléchargement, séance).
+    val status = when {
+        !e.joined -> "Inscris-toi : le film se télécharge tout seul avant la séance, sans toucher à ton quota."
+        ready && live -> "Tu rejoins au moment en cours. Ou regarde depuis le début →"
+        ready -> "Prêt pour la séance ✓"
+        dl?.status == DlStatus.QUEUED || dl?.status == DlStatus.RUNNING -> "Téléchargement en cours · ${pct(dl)} %"
+        dl?.status == DlStatus.PAUSED || dl?.status == DlStatus.FAILED -> "Téléchargement interrompu : touche ⤓ pour reprendre"
+        wifiOnly && Downloads.isMetered(ctx) && e.startsAt - now < 3 * 3600_000L ->
+            "Pas encore téléchargé : touche ⤓ pour le faire maintenant avec tes données (${mb(playable?.sizeBytes)})"
+        wifiOnly && Downloads.isMetered(ctx) -> "Se téléchargera dès que tu seras en Wi-Fi"
+        else -> "Téléchargement en préparation…"
+    }
+
+    // Inscrit : version paysage compacte (on la déplie en la touchant).
+    var expanded by rememberSaveable(e.id) { mutableStateOf(false) }
+    if (e.joined && !expanded) {
+        CompactEvent(e, now, live, playable?.title, dl, ready, status,
+            onExpand = { expanded = true },
+            onWatch = { watch(fromStart = false) },
+            onDownload = { if (playable != null && !ready) Downloads.enqueue(ctx, playable) },
+        )
+        return
+    }
+
     Box(Modifier.fillMaxWidth().padding(top = 8.dp)) {
         LiquidBackground(Modifier.matchParentSize())
         Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 34.dp)) {
+            if (e.joined) {
+                Text(
+                    "Réduire ↑", color = Color.White.copy(alpha = 0.6f), fontSize = 12.sp,
+                    modifier = Modifier.align(Alignment.End).clickable { expanded = false }.padding(bottom = 6.dp),
+                )
+            }
             Text(
                 if (live) "● EN DIRECT · SOIRÉE CINÉ" else "SOIRÉE CINÉ",
                 color = if (live) Color(0xFFFF5A5F) else Color.White.copy(alpha = 0.7f),
@@ -192,23 +224,53 @@ fun EventSection(e: CineEvent, downloads: Map<String, DownloadItem>, onPlay: (St
             }
 
             // Ligne d'état sous les boutons.
-            val status = when {
-                !e.joined -> "Inscris-toi : le film se télécharge tout seul avant la séance, sans toucher à ton quota."
-                ready && live -> "Tu rejoins au moment en cours. Ou regarde depuis le début →"
-                ready -> "Prêt pour la séance ✓ · Touche « Inscrit » pour te désinscrire"
-                dl?.status == DlStatus.QUEUED || dl?.status == DlStatus.RUNNING -> "Téléchargement en cours · ${pct(dl)} %"
-                dl?.status == DlStatus.PAUSED || dl?.status == DlStatus.FAILED -> "Téléchargement interrompu : touche ⤓ pour reprendre"
-                wifiOnly && Downloads.isMetered(ctx) && e.startsAt - now < 3 * 3600_000L ->
-                    "Pas encore téléchargé : touche ⤓ pour le faire maintenant avec tes données (${mb(playable?.sizeBytes)})"
-                wifiOnly && Downloads.isMetered(ctx) -> "Se téléchargera dès que tu seras en Wi-Fi"
-                else -> "Téléchargement en préparation…"
-            }
             Text(
                 status, color = Color.White.copy(alpha = 0.62f), fontSize = 11.sp, lineHeight = 15.sp,
                 modifier = Modifier.padding(top = 10.dp).then(
                     if (ready && live) Modifier.clickable { watch(fromStart = true) } else Modifier,
                 ),
             )
+        }
+    }
+}
+
+/** Soirée à laquelle on est inscrit : une bande paysage compacte (couverture, titre, compte à rebours). */
+@Composable
+private fun CompactEvent(
+    e: CineEvent, now: Long, live: Boolean, title: tech.xydhub.xyd.data.Title?, dl: DownloadItem?, ready: Boolean, status: String,
+    onExpand: () -> Unit, onWatch: () -> Unit, onDownload: () -> Unit,
+) {
+    Box(Modifier.fillMaxWidth().padding(top = 8.dp).clickable(onClick = onExpand)) {
+        LiquidBackground(Modifier.matchParentSize())
+        Row(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 22.dp), verticalAlignment = Alignment.CenterVertically) {
+            HoloFrame(Modifier.width(132.dp).aspectRatio(16f / 9f)) {
+                RemoteImage(e.cover ?: title?.backdrop ?: title?.poster, Modifier.fillMaxSize())
+            }
+            Column(Modifier.weight(1f).padding(horizontal = 14.dp)) {
+                Text(
+                    if (live) "● EN DIRECT" else "SOIRÉE CINÉ · INSCRIT ✓",
+                    color = if (live) Color(0xFFFF5A5F) else Color.White.copy(alpha = 0.65f),
+                    fontSize = 10.sp, fontWeight = FontWeight.SemiBold, letterSpacing = 1.5.sp, maxLines = 1,
+                )
+                LiquidMetalText(e.title, Modifier.padding(top = 2.dp), size = 18, lines = 1)
+                Text(countdown(e, now), color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(top = 2.dp))
+                Row(Modifier.padding(top = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+                    AvatarGroup(e.people, e.count, size = 22.dp, step = 14.dp)
+                    Text(
+                        if (ready) "Prêt ✓" else status.substringBefore(" :").take(34),
+                        color = Color.White.copy(alpha = 0.6f), fontSize = 10.sp, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.padding(start = 8.dp),
+                    )
+                }
+            }
+            if (live && ready) {
+                Box(
+                    Modifier.size(48.dp).clip(CircleShape).background(Color.White).clickable(onClick = onWatch),
+                    contentAlignment = Alignment.Center,
+                ) { Text("▶", color = Color.Black, fontSize = 18.sp) }
+            } else {
+                DownloadOrb(dl, ready, onDownload, size = 46.dp)
+            }
         }
     }
 }
@@ -325,7 +387,7 @@ half4 main(float2 fc) {
 // ---------------------------------------------------------------- titre en métal liquide
 
 @Composable
-private fun LiquidMetalText(text: String, modifier: Modifier = Modifier) {
+private fun LiquidMetalText(text: String, modifier: Modifier = Modifier, size: Int = 32, lines: Int = 2) {
     val t by rememberInfiniteTransition(label = "metal").animateFloat(
         0f, 1f, infiniteRepeatable(tween(4200, easing = LinearEasing)), label = "metal-t",
     )
@@ -337,8 +399,8 @@ private fun LiquidMetalText(text: String, modifier: Modifier = Modifier) {
     )
     Text(
         text, modifier,
-        style = TextStyle(brush = brush, fontSize = 32.sp, lineHeight = 36.sp, fontWeight = FontWeight.Black, letterSpacing = (-0.5).sp),
-        maxLines = 2, overflow = TextOverflow.Ellipsis,
+        style = TextStyle(brush = brush, fontSize = size.sp, lineHeight = (size + 4).sp, fontWeight = FontWeight.Black, letterSpacing = (-0.5).sp),
+        maxLines = lines, overflow = TextOverflow.Ellipsis,
     )
 }
 
@@ -383,11 +445,9 @@ private fun <T> List<T>.rotate(n: Int): List<T> = if (isEmpty()) this else (indi
 // ---------------------------------------------------------------- participants
 
 @Composable
-private fun AvatarGroup(people: List<tech.xydhub.xyd.data.Person>, count: Int) {
+private fun AvatarGroup(people: List<tech.xydhub.xyd.data.Person>, count: Int, size: Dp = 34.dp, step: Dp = 22.dp) {
     val shown = people.take(4)
     val extra = (count - shown.size).coerceAtLeast(0)
-    val size = 34.dp
-    val step = 22.dp
     val n = shown.size + if (extra > 0) 1 else 0
     if (n == 0) return
     Box(Modifier.width(size + step * (n - 1)).height(size)) {
@@ -399,7 +459,7 @@ private fun AvatarGroup(people: List<tech.xydhub.xyd.data.Person>, count: Int) {
                 Modifier.offset(x = step * shown.size).size(size).clip(CircleShape).background(Color(0xFF15161A))
                     .border(2.dp, Color.Black, CircleShape),
                 contentAlignment = Alignment.Center,
-            ) { Text("+$extra", color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.SemiBold) }
+            ) { Text("+$extra", color = Color.White, fontSize = (size.value * 0.32f).sp, fontWeight = FontWeight.SemiBold) }
         }
     }
 }
@@ -460,17 +520,17 @@ private fun LiquidMetalButton(label: String, modifier: Modifier, onClick: () -> 
 
 /** Pastille ronde : état du téléchargement du contenu de la soirée (anneau de progression). */
 @Composable
-private fun DownloadOrb(dl: DownloadItem?, ready: Boolean, onClick: () -> Unit) {
+private fun DownloadOrb(dl: DownloadItem?, ready: Boolean, onClick: () -> Unit, size: Dp = 54.dp) {
     val p = dl?.let { pct(it) / 100f } ?: 0f
     Box(
-        Modifier.size(54.dp).clip(CircleShape)
+        Modifier.size(size).clip(CircleShape)
             .background(Brush.radialGradient(listOf(Color(0xFF24262C), Color(0xFF050506))))
             .border(1.5.dp, Brush.linearGradient(listOf(Color.White.copy(alpha = 0.8f), Color(0xFF3A3D45))), CircleShape)
             .clickable(onClick = onClick),
         contentAlignment = Alignment.Center,
     ) {
         if (!ready && dl != null && p > 0f) {
-            Canvas(Modifier.size(42.dp)) {
+            Canvas(Modifier.size(size - 12.dp)) {
                 drawArc(Electric, -90f, 360f * p, false, style = Stroke(3.dp.toPx()))
             }
         }
