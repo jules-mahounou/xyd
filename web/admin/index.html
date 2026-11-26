@@ -458,6 +458,7 @@ const IC = {
   clock: "M12 21a9 9 0 100-18 9 9 0 000 18zM12 7v5l3 2",
   save: "M5 3h11l5 5v13H3V3zM7 3v6h8M7 21v-7h10v7",
   megaphone: "M3 11v2a1 1 0 001 1h2l5 4V6L6 10H4a1 1 0 00-1 1zM15 9a3 3 0 010 6M18 6a7 7 0 010 12",
+  ticket: "M3 8a2 2 0 002-2h14a2 2 0 002 2v2a2 2 0 000 4v2a2 2 0 00-2 2H5a2 2 0 00-2-2v-2a2 2 0 000-4zM14 6v12",
   link: "M10 14a4 4 0 005.7 0l3-3a4 4 0 00-5.7-5.7l-1 1M14 10a4 4 0 00-5.7 0l-3 3a4 4 0 005.7 5.7l1-1",
 };
 function icon(n) {
@@ -796,6 +797,7 @@ const PAGES = [
   { id: "", label: "Vue d'ensemble", ic: "home" },
   { id: "catalogue", label: "Catalogue", ic: "film" },
   { id: "annonces", label: "Annonces", ic: "megaphone", show: () => adsAvailable },
+  { id: "evenements", label: "Soirées ciné", ic: "ticket" },
   { sec: "Communauté" },
   { id: "requetes", label: "Requêtes", ic: "inbox", show: () => requestsAvailable },
   { id: "utilisateurs", label: "Utilisateurs", ic: "users", show: () => usersAvailable },
@@ -861,6 +863,7 @@ function route() {
     }
     case "nouveau": return renderEditor(newTitle(arg === "film" ? "film" : "serie"));
     case "annonces": return simplePage(page, adsCard());
+    case "evenements": return simplePage(page, eventsCard());
     case "versions": return simplePage(page, versionsCard());
     case "requetes": return simplePage(page, requestsCard());
     case "utilisateurs": return simplePage(page, usersCard());
@@ -872,6 +875,7 @@ function route() {
 }
 const PAGE_INFO = {
   versions: ["Mises à jour", "Visuel et notes affichés dans le modal de mise à jour de l'app, taille de l'APK."],
+  evenements: ["Soirées ciné", "Séances programmées : les inscrits reçoivent le contenu automatiquement (hors quota) et regardent ensemble à l'heure dite."],
   annonces: ["Annonces", "Image, GIF ou vidéo (portrait, carré, paysage, bandeau), texte et lien facultatifs, à placer dans les sections."],
   requetes: ["Requêtes", "Demandes de séries et films, avis et problèmes envoyés depuis l'app."],
   utilisateurs: ["Utilisateurs", "Comptes, statuts et mail d'inscription."],
@@ -1746,11 +1750,13 @@ async function findOrphans() {
       if (data.length < 1000) return rows;
     }
   };
-  const [t, a, v, n] = await Promise.all([
+  const [t, a, v, n, ev] = await Promise.all([
     all("titles", "poster_url, backdrop_url"),
     all("announcements", "image_url, video_url"),
     all("app_versions", "image_url, video_url"),
     sb.from("app_settings").select("value").eq("key", "next_release").maybeSingle(),
+    // Couvertures des soirées ciné (si la table n'existe pas encore : aucune). Une erreur réelle arrête tout.
+    all("events", "cover_url").catch((e) => { if (String(e?.message || e).includes("events")) return []; throw e; }),
   ]);
   if (n.error) throw n.error;
   // Toutes les URL citées, quel que soit leur format (domaine, ?paramètres, /render/image/…).
@@ -1758,6 +1764,7 @@ async function findOrphans() {
     ...t.flatMap((x) => [x.poster_url, x.backdrop_url]),
     ...a.flatMap((x) => [x.image_url, x.video_url]),
     ...v.flatMap((x) => [x.image_url, x.video_url]),
+    ...ev.map((x) => x.cover_url),
     JSON.stringify(n.data?.value || {}),
   ].filter(Boolean).map((u) => { try { return decodeURIComponent(u); } catch { return u; } }).join("\n");
   // Un fichier est « utilisé » dès que son chemin apparaît quelque part : en cas de doute, on garde.
@@ -2214,6 +2221,150 @@ function versionsCard() {
   };
   render();
   return card;
+}
+
+// ---------------------------------------------------------------- soirées ciné
+/** Stockage d'un film / épisode, et s'il est gratuit en sortie (R2). */
+function storageInfo(storageId) {
+  const st = storageId ? storages.find((x) => x.id === storageId) : storages.find((x) => x.is_env);
+  const free = st ? !(st.billable ?? st.provider !== "r2") : true;
+  return { name: st?.name || "R2 principal", free };
+}
+/** Tous les contenus projetables (films + épisodes), avec leur stockage. */
+function eventMediaOptions() {
+  const out = [];
+  for (const t of titles) {
+    if (t.kind === "film") {
+      if (t.video_key) out.push({ id: t.id, label: `Film — ${t.name}`, size: t.size_bytes, dur: t.duration_s, ...storageInfo(t.storage_id) });
+    } else {
+      for (const se of t.seasons) for (const e of se.episodes) if (e.video_key) {
+        out.push({ id: e.id, label: `${t.name} — S${String(se.number).padStart(2, "0")}E${String(e.number).padStart(2, "0")}${e.name ? " · " + e.name : ""}`, size: e.size_bytes, dur: e.duration_s, ...storageInfo(e.storage_id) });
+      }
+    }
+  }
+  return out;
+}
+const toLocalInput = (iso) => { const d = new Date(iso); d.setMinutes(d.getMinutes() - d.getTimezoneOffset()); return d.toISOString().slice(0, 16); };
+
+function eventsCard() {
+  const box = h("div", {}, h("div", { class: "card" }, skRows(3, true)));
+  let events = [];
+  let editing = null;
+  let eventsAvailable = true;
+
+  async function reload() {
+    const r = await sb.from("events").select("*, event_participants(count)").order("starts_at", { ascending: false });
+    eventsAvailable = !r.error;
+    events = r.data || [];
+    draw();
+  }
+
+  function statusOf(e) {
+    const now = Date.now(), st = new Date(e.starts_at).getTime();
+    const end = e.ends_at ? new Date(e.ends_at).getTime() : st + 4 * 3600e3;
+    if (!e.published) return ["Brouillon", "muted"];
+    if (now < st) return ["À venir", "ok"];
+    if (now < end) return ["En cours", "hot"];
+    return ["Terminée", "muted"];
+  }
+
+  function form(e) {
+    const opts = eventMediaOptions();
+    const isNew = !e.id;
+    const id = e.id || crypto.randomUUID();
+    const title = h("input", { value: e.title || "", placeholder: "Soirée ciné du vendredi" });
+    const desc = h("textarea", { placeholder: "Le programme, l'ambiance, ce qui rend la soirée spéciale…" }); desc.value = e.description || "";
+    const when = h("input", { type: "datetime-local", value: e.starts_at ? toLocalInput(e.starts_at) : "" });
+    const pub = h("input", { type: "checkbox", checked: !!e.published });
+    let cover = e.cover_url || null;
+    const coverPrev = h("div", { class: "poster", style: { width: "220px", aspectRatio: "16/9", backgroundSize: "cover", backgroundPosition: "center", borderRadius: "10px", border: "1px dashed #333", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", fontSize: "12px", color: "#888" } }, cover ? "" : "Couverture 16:9\n(cliquer)");
+    const paint = () => { coverPrev.style.backgroundImage = cover ? `url("${cover}")` : ""; coverPrev.textContent = cover ? "" : "Couverture 16:9 (cliquer)"; };
+    paint();
+    coverPrev.onclick = () => {
+      const inp = h("input", { type: "file", accept: "image/*" });
+      inp.onchange = async () => {
+        const f = inp.files?.[0]; if (!f) return;
+        coverPrev.textContent = "Envoi…";
+        try { cover = await uploadImage(f, id, "event"); paint(); } catch (err) { fail(err); paint(); }
+      };
+      inp.click();
+    };
+    const media = h("select", {},
+      h("option", { value: "" }, "— Choisir le film ou l'épisode projeté —"),
+      ...opts.map((o) => h("option", { value: o.id, selected: o.id === e.media_id, disabled: !o.free && o.id !== e.media_id },
+        `${o.label}${o.free ? "" : " · " + o.name + " (Backblaze : non autorisé)"}`)));
+    const note = h("p", { class: "muted", style: { fontSize: "12px", margin: "6px 0 0" } });
+    const upd = () => {
+      const o = opts.find((x) => x.id === media.value);
+      const n = Math.max(e.event_participants?.[0]?.count || 0, 30);
+      note.textContent = !o ? "Seuls les contenus rangés sur un stockage R2 (sortie gratuite) sont proposés : une soirée fait télécharger le même fichier à tous les inscrits."
+        : !o.free ? `⚠ Ce contenu est sur ${o.name} (Backblaze, sortie payante) : envoie-le sur un stockage R2 avant la soirée.`
+        : `Stockage ${o.name} (sortie gratuite) · ${fmtSize(o.size) || "taille ?"} par personne · ${n} inscrits ≈ ${fmtSize((o.size || 0) * n)} téléchargés, 0 €.`;
+    };
+    media.onchange = upd; upd();
+    const save = h("button", { onclick: async () => {
+      if (!title.value.trim()) return toast("Donne un titre à la soirée");
+      if (!when.value) return toast("Choisis la date et l'heure");
+      const o = opts.find((x) => x.id === media.value);
+      if (pub.checked && !o) return toast("Choisis le contenu projeté avant de publier");
+      if (pub.checked && o && !o.free) return toast("Ce contenu est sur un stockage payant : impossible de publier");
+      const row = { title: title.value.trim(), description: desc.value.trim(), starts_at: new Date(when.value).toISOString(),
+        cover_url: cover, media_id: media.value || null, published: pub.checked };
+      save.disabled = true;
+      const r = isNew ? await sb.from("events").insert({ id, ...row }) : await sb.from("events").update(row).eq("id", e.id);
+      save.disabled = false;
+      if (r.error) return fail(r.error);
+      pruneMedia(id, [cover]);
+      toast(isNew ? "Soirée créée" : "Soirée enregistrée");
+      editing = null; reload();
+    } }, isNew ? "Créer la soirée" : "Enregistrer");
+    const lab = (t, el) => h("div", { style: { marginTop: "12px" } }, h("label", { style: { display: "block", fontSize: "12px", color: "#999", marginBottom: "4px" } }, t), el);
+    return h("div", { class: "card" },
+      h("div", { class: "ptitle" }, h("h3", {}, isNew ? "Nouvelle soirée ciné" : "Modifier la soirée")),
+      h("div", { style: { display: "flex", gap: "16px", flexWrap: "wrap" } },
+        h("div", {}, lab("Couverture", coverPrev)),
+        h("div", { style: { flex: "1", minWidth: "240px" } }, lab("Titre", title), lab("Date et heure de début", when))),
+      lab("Description", desc),
+      lab("Contenu projeté", media), note,
+      h("label", { class: "check", style: { display: "flex", marginTop: "14px" } }, pub, "Publiée (visible dans l'app)"),
+      h("div", { style: { display: "flex", gap: "8px", marginTop: "16px" } },
+        save, h("button", { class: "ghost", onclick: () => { editing = null; draw(); } }, "Annuler")));
+  }
+
+  function draw() {
+    if (!eventsAvailable) {
+      box.replaceChildren(h("div", { class: "card empty" }, icon("ticket"), h("div", {}, "Migration « events » pas encore appliquée (workflow Backend).")));
+      return;
+    }
+    const list = events.map((e) => {
+      const [label, cls] = statusOf(e);
+      const n = e.event_participants?.[0]?.count || 0;
+      const m = eventMediaOptions().find((o) => o.id === e.media_id);
+      return h("div", { class: "row", style: { display: "flex", gap: "14px", alignItems: "center", padding: "12px 0", borderBottom: "1px solid #1e1e1e" } },
+        h("div", { style: { width: "120px", aspectRatio: "16/9", borderRadius: "8px", background: `#111 center/cover url("${e.cover_url || ""}")`, flex: "none" } }),
+        h("div", { style: { flex: "1", minWidth: "0" } },
+          h("div", { style: { fontWeight: "600" } }, e.title, " ", h("span", { class: "pill " + cls, style: { fontSize: "11px", marginLeft: "6px" } }, label)),
+          h("div", { class: "muted", style: { fontSize: "12px", marginTop: "3px" } },
+            new Date(e.starts_at).toLocaleString("fr-FR", { weekday: "long", day: "numeric", month: "long", hour: "2-digit", minute: "2-digit" }),
+            " · ", m ? m.label : "aucun contenu", " · ", `${n} inscrit${n > 1 ? "s" : ""}`)),
+        h("button", { class: "ghost sm", onclick: () => { editing = e; draw(); } }, "Modifier"),
+        h("button", { class: "ghost sm danger", onclick: async () => {
+          if (!(await uiConfirm(`Supprimer « ${e.title} » ? Les inscriptions sont supprimées aussi.`, { title: "Supprimer la soirée", ok: "Supprimer", danger: true }))) return;
+          const r = await sb.from("events").delete().eq("id", e.id);
+          if (r.error) return fail(r.error);
+          pruneMedia(e.id);
+          toast("Soirée supprimée"); reload();
+        } }, "Supprimer"));
+    });
+    box.replaceChildren(
+      editing ? form(editing) : h("div", { style: { marginBottom: "14px" } }, h("button", { onclick: () => { editing = {}; draw(); } }, icon("plus"), " Nouvelle soirée")),
+      h("div", { class: "card", style: { marginTop: "14px" } },
+        h("div", { class: "ptitle" }, h("h3", {}, "Soirées")),
+        list.length ? h("div", {}, ...list) : h("p", { class: "muted" }, "Aucune soirée pour l'instant.")));
+  }
+
+  reload();
+  return box;
 }
 
 // ---------------------------------------------------------------- annonces

@@ -154,7 +154,44 @@ data class UserRequest(
     val createdAt: String,
 )
 
+/** Soirée ciné programmée dans l'admin. */
+data class CineEvent(
+    val id: String,
+    val title: String,
+    val description: String,
+    val startsAt: Long,
+    val endsAt: Long,
+    val cover: String?,
+    val mediaId: String?,
+    val count: Int,
+    val joined: Boolean,
+    val people: List<String>,
+) {
+    fun live(now: Long = System.currentTimeMillis()) = now in startsAt until endsAt
+}
+
 object Parse {
+    fun events(json: String): List<CineEvent> {
+        val a = org.json.JSONArray(json.ifBlank { "[]" }.let { if (it.trim() == "null") "[]" else it })
+        return (0 until a.length()).mapNotNull { i ->
+            val o = a.getJSONObject(i)
+            runCatching {
+                CineEvent(
+                    id = o.getString("id"),
+                    title = o.optString("title"),
+                    description = o.optString("description"),
+                    startsAt = java.time.OffsetDateTime.parse(o.getString("starts_at")).toInstant().toEpochMilli(),
+                    endsAt = java.time.OffsetDateTime.parse(o.getString("ends_at")).toInstant().toEpochMilli(),
+                    cover = o.optString("cover_url").takeIf { it.startsWith("http") },
+                    mediaId = o.optString("media_id").takeIf { it.length > 30 },
+                    count = o.optInt("count"),
+                    joined = o.optBoolean("joined"),
+                    people = o.optJSONArray("people")?.let { p -> (0 until p.length()).map { p.optString(it) } }.orEmpty(),
+                )
+            }.getOrNull()
+        }
+    }
+
     fun announcements(json: String): List<Announcement> {
         val arr = JSONArray(json)
         return (0 until arr.length()).map { i ->

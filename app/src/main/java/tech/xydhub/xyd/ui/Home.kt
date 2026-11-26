@@ -112,6 +112,10 @@ fun HomeScreen(onPlay: (String) -> Unit) {
     val error by Repo.error.collectAsStateWithLifecycle()
     val accountStatus by Repo.accountStatus.collectAsStateWithLifecycle()
     val downloads by Downloads.items.collectAsStateWithLifecycle()
+    val events by Repo.events.collectAsStateWithLifecycle()
+    val ctxEv = LocalContext.current
+    // Rappels des soirées auxquelles on est inscrit (reprogrammés après chaque mise à jour, ex. horaire modifié).
+    LaunchedEffect(events) { tech.xydhub.xyd.events.EventReminder.sync(ctxEv, events) }
 
     // Valeur = id d'un titre, ou SHEET_DOWNLOADS / SHEET_SETTINGS / SHEET_REQUEST.
     var sheet by rememberSaveable { mutableStateOf<String?>(null) }
@@ -247,6 +251,12 @@ fun HomeScreen(onPlay: (String) -> Unit) {
                     item { header() }
                     item { chips() }
                 }
+            }
+
+            // Soirée ciné à venir ou en cours (vue « Tout » seulement).
+            val ev = events.firstOrNull()
+            if (ev != null && filter == F_ALL && catFilter == null) {
+                item(key = "event-" + ev.id) { EventSection(ev, downloads, onPlay) }
             }
 
             if (resume.isNotEmpty()) {

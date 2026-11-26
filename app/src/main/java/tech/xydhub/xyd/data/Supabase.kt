@@ -140,6 +140,19 @@ object Supabase {
     )
 
     /** Statut du compte connecté : "active" ou "blocked" (null si inconnu). */
+    // ---------- Soirées ciné ----------
+
+    suspend fun upcomingEvents(): String = authedOk("/rest/v1/rpc/upcoming_events", "POST", "{}")
+
+    suspend fun joinEvent(eventId: String) {
+        authedOk("/rest/v1/event_participants", "POST", JSONObject().put("event_id", eventId).toString(),
+            mapOf("Prefer" to "resolution=ignore-duplicates,return=minimal"))
+    }
+
+    suspend fun leaveEvent(eventId: String, userId: String) {
+        authedOk("/rest/v1/event_participants?event_id=eq.$eventId&user_id=eq.$userId", "DELETE")
+    }
+
     suspend fun myStatus(userId: String): String? {
         val arr = org.json.JSONArray(authedOk("/rest/v1/profiles?select=status&user_id=eq.$userId"))
         return if (arr.length() == 0) null else arr.getJSONObject(0).optString("status").ifBlank { null }

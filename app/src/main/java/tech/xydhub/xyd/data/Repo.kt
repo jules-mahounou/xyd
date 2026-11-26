@@ -36,6 +36,8 @@ object Repo {
     /** Annonces publiées, par id. */
     private val _ads = MutableStateFlow<Map<String, Announcement>>(emptyMap())
     val ads: StateFlow<Map<String, Announcement>> = _ads
+    /** Soirées ciné à venir ou en cours (vide si la fonctionnalité n'est pas encore en base). */
+    val events = MutableStateFlow<List<CineEvent>>(emptyList())
     val loading = MutableStateFlow(false)
     /** "blocked" : compte suspendu, l'accueil affiche un écran dédié au lieu du catalogue. */
     val accountStatus = MutableStateFlow<String?>(null)
@@ -132,6 +134,7 @@ object Repo {
                 // Catégories : facultatives (table absente = simplement pas de rangées personnalisées).
                 // Annonces : facultatives aussi (table absente = aucune annonce).
                 runCatching { _ads.value = Parse.announcements(Supabase.fetchAnnouncements()).associateBy { it.id } }
+                refreshEvents()
                 runCatching {
                     val cj = Supabase.fetchCategories()
                     _categories.value = Parse.categories(cj)
@@ -143,6 +146,28 @@ object Repo {
             } finally {
                 loading.value = false
             }
+        }
+    }
+
+    suspend fun refreshEvents() {
+        runCatching { events.value = Parse.events(Supabase.upcomingEvents()) }
+    }
+
+    /** Inscription / désinscription à une soirée (mise à jour immédiate de l'affichage, puis confirmation serveur). */
+    fun setJoined(e: CineEvent, join: Boolean, onDone: (Boolean) -> Unit = {}) {
+        val s = _session.value ?: return
+        val me = s.name
+        events.value = events.value.map {
+            if (it.id != e.id) it else it.copy(
+                joined = join,
+                count = (it.count + if (join) 1 else -1).coerceAtLeast(0),
+                people = if (join) listOf(me) + it.people.filter { n -> n != me } else it.people.filter { n -> n != me },
+            )
+        }
+        scope.launch {
+            val ok = runCatching { if (join) Supabase.joinEvent(e.id) else Supabase.leaveEvent(e.id, s.userId) }.isSuccess
+            refreshEvents()
+            onDone(ok)
         }
     }
 

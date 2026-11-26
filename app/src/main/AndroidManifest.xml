@@ -33,6 +33,10 @@
             </intent-filter>
         </activity>
 
+        <receiver
+            android:name=".events.EventReminderReceiver"
+            android:exported="false" />
+
         <service
             android:name=".download.DownloadService"
             android:exported="false"

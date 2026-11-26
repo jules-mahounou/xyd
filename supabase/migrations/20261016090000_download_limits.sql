@@ -190,7 +190,8 @@ begin
     v_bcap := coalesce(b.daily_class_b, 2250);
   end if;
   v_ttl := coalesce(b.url_ttl, case when v_billable then 10800 else 21600 end);
-  v_userchk := v_on and not v_admin;
+  -- Admin, ou contenu d'une soirée ciné à laquelle on est inscrit : pas de quota personnel.
+  v_userchk := v_on and not v_admin and not coalesce(public.event_media_ok(p_media, v_uid), false);
 
   perform pg_advisory_xact_lock(hashtextextended('xyd-dl:' || v_uid::text, 0));
   if v_billable and v_on then

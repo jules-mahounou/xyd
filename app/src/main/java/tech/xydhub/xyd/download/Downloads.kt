@@ -142,7 +142,7 @@ object Downloads {
         remove(mediaId)
     }
 
-    private fun isMetered(context: Context): Boolean =
+    fun isMetered(context: Context): Boolean =
         context.getSystemService(ConnectivityManager::class.java)?.isActiveNetworkMetered ?: true
 
     fun pause(mediaId: String) = set(mediaId) { it.copy(status = DlStatus.PAUSED) }
