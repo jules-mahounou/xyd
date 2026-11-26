@@ -22,7 +22,7 @@ try:
 except ImportError:
     sys.exit("Il manque le module requests :  pip install requests")
 
-VERSION = "1.0.0"
+VERSION = "1.1.0"
 SITE = "https://xydhub.tech/admin/"
 SELF_URL = "https://raw.githubusercontent.com/jules-mahounou/xyd/claude/intelligent-hawking-c9npwk/tools/xyd/xyd.py"
 PART = 16 * 1024 * 1024  # taille d'un morceau d'envoi (B2 : 5 Mo minimum)
@@ -175,8 +175,46 @@ def hw_encoder():
         _hw = "h264_mediacodec" if "h264_mediacodec" in out else ""
     return _hw
 
-def plan_convert(p, mode):
+# Qualités de sortie (--qualite) : hauteur max, débit vidéo cible (kbit/s), CRF logiciel, débit son.
+QUALITIES = {
+    "360p": (360, 550, 27, "80k"),
+    "480p": (480, 850, 25, "96k"),
+    "540p": (540, 1100, 24, "112k"),
+    "720p": (720, 1800, 23, "128k"),
+    "1080p": (1080, 3500, 22, "160k"),
+}
+
+def needs_quality(p, quality):
+    """Faut-il ré-encoder pour respecter la qualité demandée (trop haut ou trop lourd) ?"""
+    if not quality:
+        return False
+    h_max, kbps, _, _ = QUALITIES[quality]
+    too_tall = (p["h"] or 0) > h_max + 8
+    too_heavy = p["bitrate"] and p["bitrate"] / 1000 > kbps * 1.35
+    return bool(too_tall or too_heavy)
+
+def estimate(p, quality):
+    """Taille estimée après conversion à la qualité donnée."""
+    if not quality or not p["duration"]:
+        return None
+    _, kbps, _, ab = QUALITIES[quality]
+    return p["duration"] * (kbps + int(ab[:-1])) * 1000 / 8
+
+def plan_convert(p, mode, quality=None):
     """Ce qu'il faut faire pour rendre le fichier lisible : (action, arguments vidéo, arguments son)."""
+    if quality:
+        h_max, kbps, crf, ab = QUALITIES[quality]
+        kbps = min(kbps, int(p["bitrate"] / 1000 * 0.95)) if p["bitrate"] else kbps
+        kbps = max(300, kbps)
+        scale = ["-vf", f"scale=-2:'min({h_max},ih)'"]
+        copy_a = p["acodec"] == "aac" and quality in ("720p", "1080p")
+        a_args = ["-c:a", "copy"] if copy_a or p["acodec"] is None else ["-c:a", "aac", "-b:a", ab, "-ac", "2"]
+        sw = ["-c:v", "libx264", "-preset", "veryfast", "-crf", str(crf), "-maxrate", f"{int(kbps * 1.5)}k",
+              "-bufsize", f"{kbps * 3}k", "-profile:v", "high", "-pix_fmt", "yuv420p"] + scale
+        if mode != "sw" and hw_encoder():
+            hw = ["-c:v", "h264_mediacodec", "-b:v", f"{kbps}k", "-pix_fmt", "yuv420p"] + scale
+            return f"{quality} · encodage matériel ({kbps} kbit/s)", hw, a_args, sw
+        return f"{quality} · encodage logiciel (CRF {crf})", sw, a_args, None
     copy_v = (p["vcodec"] == "h264" and p["pix"] in ("yuv420p", "yuvj420p")) or p["vcodec"] == "hevc"
     copy_a = p["acodec"] in ("aac", "mp3") or p["acodec"] is None
     a_args = ["-c:a", "copy"] if copy_a else ["-c:a", "aac", "-b:a", "128k", "-ac", "2"]
@@ -194,12 +232,14 @@ def plan_convert(p, mode):
         return f"encodage matériel ({p['vcodec']} → h264, {target} kbit/s)", hw, a_args, sw
     return f"encodage logiciel ({p['vcodec']} → h264)", sw, a_args, None
 
-def convert_file(src, dst, mode, dry_run):
+def convert_file(src, dst, mode, dry_run, quality=None):
     p = probe(src)
-    if app_ready(p) and src.suffix.lower() in (".mp4", ".m4v", ".mov", ".mkv", ".webm"):
+    if app_ready(p) and src.suffix.lower() in (".mp4", ".m4v", ".mov", ".mkv", ".webm") and not needs_quality(p, quality):
         return "déjà lisible", src
-    label, v_args, a_args, fallback = plan_convert(p, mode)
-    desc = f"{src.name} · {p['format']} {p['vcodec']}/{p['acodec']} · {human(src.stat().st_size)} → {label}"
+    label, v_args, a_args, fallback = plan_convert(p, mode, quality if needs_quality(p, quality) else None)
+    est = estimate(p, quality) if needs_quality(p, quality) else None
+    desc = (f"{src.name} · {p['h'] or '?'}p {p['vcodec']}/{p['acodec']} · {human(src.stat().st_size)} → {label}"
+            + (f" · ≈ {human(est)}" if est else ""))
     if dry_run:
         dry(f"convertirait {desc} → {dst}")
         return label, None
@@ -402,11 +442,11 @@ def cmd_convert(a):
         sys.exit("Aucune vidéo trouvée.")
     n = 0
     for f in files:
-        dst = (Path(a.out) if a.out else f.parent / "xyd-mp4") / (f.stem + ".mp4")
+        dst = (Path(a.out) if a.out else f.parent / "xyd-mp4") / (f.stem + (f"-{a.qualite}" if a.qualite else "") + ".mp4")
         if dst.exists() and not a.dry_run:
             info(f"{f.name} : déjà converti ({dst})"); continue
         try:
-            label, out = convert_file(f, dst, a.encoder, a.dry_run)
+            label, out = convert_file(f, dst, a.encoder, a.dry_run, a.qualite)
             if label == "déjà lisible":
                 ok(f"{f.name} : déjà lisible par l'app, rien à faire")
             n += 1
@@ -509,16 +549,17 @@ def ext_for(src, p):
 def prepare(f, a):
     """Vérifie que l'app saura lire le fichier ; le convertit si --convert, sinon refuse."""
     p = probe(f)
-    if app_ready(p):
+    q = getattr(a, "qualite", None)
+    if app_ready(p) and not needs_quality(p, q):
         return f
-    if not a.convert:
+    if not a.convert and not q:
         err(f"{f.name} : format {p['format']} {p['vcodec']}/{p['acodec']} non lisible par l'app. Ajoute --convert.")
         return None
-    dst = f.parent / "xyd-mp4" / (f.stem + ".mp4")
+    dst = f.parent / "xyd-mp4" / (f.stem + (f"-{q}" if q else "") + ".mp4")
     if dst.exists() and app_ready(probe(dst)):
         info(f"version convertie trouvée : {dst.name}")
         return dst
-    _, out = convert_file(f, dst, a.encoder, False)
+    _, out = convert_file(f, dst, a.encoder, False, q)
     return out
 
 def resolve_storage(api, a):
@@ -542,7 +583,11 @@ def cmd_upload(a):
         for f in files:
             try:
                 p = probe(f)
-                if not app_ready(p):
+                if a.qualite and needs_quality(p, a.qualite):
+                    est = estimate(p, a.qualite)
+                    dry(f"{f.name} : {p['h']}p · {human(f.stat().st_size)} → serait converti en {a.qualite}"
+                        + (f" (≈ {human(est)})" if est else "") + " avant l'envoi")
+                elif not app_ready(p):
                     (dry if a.convert else warn)(f"{f.name} : {p['format']} {p['vcodec']}/{p['acodec']} → "
                                                 + ("serait converti avant l'envoi" if a.convert else "non lisible par l'app, il faudra --convert"))
             except Exception as e:
@@ -641,6 +686,7 @@ def main():
     p = add("convert", cmd_convert, "convertit en MP4 lisible par l'app")
     p.add_argument("paths", nargs="+"); p.add_argument("--out", help="dossier de sortie (défaut : <dossier>/xyd-mp4)")
     p.add_argument("--encoder", choices=["auto", "hw", "sw"], default="auto", help="hw = matériel, sw = logiciel")
+    p.add_argument("-q", "--qualite", choices=list(QUALITIES), help="réduit à cette qualité (ex. 360p, 480p, 720p)")
     for name, fn, h in (("upload", cmd_upload, "envoie des vidéos"), ("watch", cmd_watch, "surveille un dossier et envoie")):
         p = add(name, fn, h)
         p.add_argument("paths", nargs="+")
@@ -650,6 +696,7 @@ def main():
         p.add_argument("--remplacer", action="store_true", help="remplace les épisodes qui existent déjà")
         p.add_argument("--convert", action="store_true", help="convertit d'abord les fichiers que l'app ne lit pas")
         p.add_argument("--encoder", choices=["auto", "hw", "sw"], default="auto")
+        p.add_argument("-q", "--qualite", choices=list(QUALITIES), help="convertit d'abord à cette qualité (ex. 360p, 480p, 720p)")
         p.add_argument("--stockage", help="nom du stockage imposé (défaut : automatique)")
         p.add_argument("-y", "--oui", action="store_true", help="ne pas demander de confirmation")
         if name == "watch":
