@@ -53,6 +53,11 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.derivedStateOf
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -226,8 +231,30 @@ fun HomeScreen(onPlay: (String) -> Unit) {
         }
     }
 
+    // Barre du bas : visible dès que l'en-tête (et ses boutons) a quitté l'écran.
+    val listState = androidx.compose.foundation.lazy.rememberLazyListState()
+    val dockVisible by remember { derivedStateOf { listState.firstVisibleItemIndex > 0 } }
+    var dockOpen by rememberSaveable { mutableStateOf(false) }
+    LaunchedEffect(dockVisible) { if (!dockVisible) dockOpen = false }
+    val dens = LocalDensity.current
+    // Flou progressif du contenu derrière la barre : léger fermée, plus fort ouverte.
+    val blurPx by androidx.compose.animation.core.animateFloatAsState(
+        when { !dockVisible -> 0f; dockOpen -> with(dens) { 18.dp.toPx() }; else -> with(dens) { 7.dp.toPx() } },
+        androidx.compose.animation.core.tween(320), label = "dock-blur",
+    )
+    var listSize by remember { mutableStateOf(androidx.compose.ui.unit.IntSize.Zero) }
+    val bandPx = with(dens) { (DOCK_HEIGHT + 30.dp).toPx() } + WindowInsets.navigationBars.getBottom(dens)
+    val blurEffect = remember(listSize, (blurPx / 2f).toInt()) {
+        progressiveBlurEffect(listSize.width.toFloat(), listSize.height.toFloat(), bandPx, blurPx)
+    }
+
     PullToRefreshBox(isRefreshing = loading, onRefresh = { Repo.refresh() }, modifier = Modifier.fillMaxSize()) {
-        LazyColumn(Modifier.fillMaxSize()) {
+        LazyColumn(
+            Modifier.fillMaxSize()
+                .onSizeChanged { listSize = it }
+                .graphicsLayer { renderEffect = blurEffect },
+            state = listState,
+        ) {
             when {
                 catalog.isEmpty() && session != null && (loading || error == null) -> {
                     item { header() }
@@ -355,6 +382,18 @@ fun HomeScreen(onPlay: (String) -> Unit) {
                 }
             }
         }
+
+        BottomDock(
+            visible = dockVisible && sheet == null,
+            expanded = dockOpen,
+            onToggle = { dockOpen = !dockOpen },
+            activeDownloads = active,
+            onSearch = { dockOpen = false; sheet = SHEET_SEARCH },
+            onRequest = { dockOpen = false; sheet = SHEET_REQUEST },
+            onDownloads = { dockOpen = false; sheet = SHEET_DOWNLOADS },
+            onSettings = { dockOpen = false; sheet = SHEET_SETTINGS },
+            modifier = Modifier.align(Alignment.BottomCenter),
+        )
     }
 
     resumeMenu?.let { id ->
