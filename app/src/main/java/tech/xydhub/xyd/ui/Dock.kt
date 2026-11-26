@@ -138,7 +138,7 @@ fun BottomDock(
                 Brush.verticalGradient(0f to Color.Transparent, 0.45f to Color(0x40000000), 1f to Color(0xCC000000)),
             ),
         )
-        // Bosse en verre + son liseré, puis le cercle du logo.
+        // Bosse noire, puis le cercle du logo.
         Canvas(Modifier.fillMaxSize()) {
             val cx = size.width / 2f
             val half = size.width / 2f
@@ -151,12 +151,8 @@ fun BottomDock(
                 lineTo(size.width, baseY)
                 close()
             }
-            drawPath(mound, Brush.verticalGradient(listOf(Color(0x33FFFFFF), Color(0x0FFFFFFF)), startY = peakY, endY = baseY))
-            drawPath(
-                mound,
-                Brush.horizontalGradient(0f to Color.White.copy(alpha = 0.05f), 0.5f to Color.White.copy(alpha = 0.6f), 1f to Color.White.copy(alpha = 0.05f)),
-                style = Stroke(1.dp.toPx()),
-            )
+            // Bosse en noir pur, sans bordure ; légèrement translucide pour laisser deviner le flou derrière.
+            drawPath(mound, Color(0xE0000000))
             drawCircle(Color(0xE6050506), r, Offset(cx, logoY))
             drawCircle(Color.White.copy(alpha = 0.35f + 0.35f * glow), r, Offset(cx, logoY), style = Stroke(1.2.dp.toPx()))
         }
