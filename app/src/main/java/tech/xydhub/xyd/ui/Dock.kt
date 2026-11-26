@@ -66,7 +66,7 @@ import kotlin.math.roundToInt
  */
 
 /** Hauteur de la barre, au-dessus de la barre de navigation Android. */
-val DOCK_HEIGHT = 92.dp
+val DOCK_HEIGHT = 66.dp
 
 private class DockAction(val label: String, val icon: ImageVector, val badge: Int, val onClick: () -> Unit)
 
@@ -108,82 +108,90 @@ fun BottomDock(
             }
         }
     }
-    val logoTurn by animateFloatAsState(if (expanded) 1f else 0f, spring(dampingRatio = 0.55f, stiffness = 220f), label = "logo")
+    // Logo : petit enfoncement élastique à chaque toucher, et le cercle s'illumine quand c'est ouvert.
+    val press = remember { Animatable(0f) }
+    val firstRun = remember { booleanArrayOf(true) }
+    LaunchedEffect(expanded) {
+        if (firstRun[0]) { firstRun[0] = false; return@LaunchedEffect }
+        press.snapTo(1f)
+        press.animateTo(0f, spring(dampingRatio = 0.35f, stiffness = 500f))
+    }
+    val glow by animateFloatAsState(if (expanded) 1f else 0f, tween(260), label = "glow")
 
     BoxWithConstraints(
         modifier.fillMaxWidth().height(DOCK_HEIGHT + inset)
             .graphicsLayer { alpha = shown; translationY = (1f - shown) * 40.dp.toPx() },
     ) {
         val w = constraints.maxWidth.toFloat()
-        val contentH = with(dens) { DOCK_HEIGHT.toPx() }
-        val baseY = contentH                 // le fil touche le bas, aux deux coins
-        val peakY = contentH * 0.46f         // sommet, sous le logo
-        val r = with(dens) { 24.dp.toPx() }  // rayon du cercle du logo
-        fun curveY(u: Float) = peakY + (baseY - peakY) * u.coerceIn(0f, 1f).pow(1.7f)
+        val h = constraints.maxHeight.toFloat()
+        val insetPx = with(dens) { inset.toPx() }
+        val baseY = h                                                       // la bosse part du bas de l'écran
+        val peakY = h - maxOf(with(dens) { 24.dp.toPx() }, insetPx + with(dens) { 12.dp.toPx() }) // bosse basse
+        val r = with(dens) { 21.dp.toPx() }                                 // rayon du cercle du logo
+        val logoY = peakY - with(dens) { 5.dp.toPx() }                      // logo posé sur la pointe
+        // Profil de la bosse : flancs creusés qui remontent en pointe vers le centre (u = 0 centre, 1 bord).
+        fun curveY(u: Float) = baseY - (baseY - peakY) * (1f - u.coerceIn(0f, 1f)).pow(2.6f)
 
-        // Verre sombre : de transparent (haut) à presque noir (bas), pour lire les icônes.
+        // Voile sombre, plus léger qu'avant : le flou progressif fait l'essentiel.
         Box(
             Modifier.fillMaxSize().background(
-                Brush.verticalGradient(0f to Color.Transparent, 0.35f to Color(0x66000000), 1f to Color(0xE6000000)),
+                Brush.verticalGradient(0f to Color.Transparent, 0.45f to Color(0x40000000), 1f to Color(0xCC000000)),
             ),
         )
-        // Fil lumineux + cercle du logo.
-        Canvas(Modifier.fillMaxWidth().height(DOCK_HEIGHT)) {
+        // Bosse en verre + son liseré, puis le cercle du logo.
+        Canvas(Modifier.fillMaxSize()) {
             val cx = size.width / 2f
             val half = size.width / 2f
-            val stroke = 1.dp.toPx()
-            val line = Brush.horizontalGradient(
-                0f to Color.White.copy(alpha = 0.10f), 0.5f to Color.White.copy(alpha = 0.55f), 1f to Color.White.copy(alpha = 0.10f),
-            )
-            for (side in listOf(-1f, 1f)) {
-                val path = Path()
-                val u0 = (r * 1.02f) / half
-                var first = true
-                var k = 0
-                while (k <= 40) {
-                    val u = u0 + (1f - u0) * k / 40f
-                    val x = cx + side * u * half
-                    val y = curveY(u)
-                    if (first) { path.moveTo(x, y); first = false } else path.lineTo(x, y)
-                    k++
+            val mound = Path().apply {
+                moveTo(0f, baseY)
+                for (k in 0..60) {
+                    val x = k / 60f * size.width
+                    lineTo(x, curveY(abs(x - cx) / half))
                 }
-                drawPath(path, line, style = Stroke(stroke))
+                lineTo(size.width, baseY)
+                close()
             }
-            drawCircle(Color.White.copy(alpha = 0.5f), r, Offset(cx, peakY), style = Stroke(stroke))
+            drawPath(mound, Brush.verticalGradient(listOf(Color(0x33FFFFFF), Color(0x0FFFFFFF)), startY = peakY, endY = baseY))
+            drawPath(
+                mound,
+                Brush.horizontalGradient(0f to Color.White.copy(alpha = 0.05f), 0.5f to Color.White.copy(alpha = 0.6f), 1f to Color.White.copy(alpha = 0.05f)),
+                style = Stroke(1.dp.toPx()),
+            )
+            drawCircle(Color(0xE6050506), r, Offset(cx, logoY))
+            drawCircle(Color.White.copy(alpha = 0.35f + 0.35f * glow), r, Offset(cx, logoY), style = Stroke(1.2.dp.toPx()))
         }
 
-        // Icônes : sortent du logo et glissent le long du fil, du flou au net.
+        // Icônes : sortent du logo et glissent le long de la bosse, du flou au net.
+        val lift = with(dens) { 23.dp.toPx() }
+        val floor = h - insetPx - with(dens) { 25.dp.toPx() }
         actions.forEachIndexed { i, a ->
             val t = open[i].value
             if (t > 0.001f) {
                 val u = abs(slots[i])
-                val tx = slots[i] * (w / 2f) * t
-                // Le centre de l'icône part du logo et se pose juste au-dessus du fil.
-                val ty = (curveY(u * t) - with(dens) { 14.dp.toPx() } * t.coerceAtMost(1f)) - peakY
+                val target = minOf(curveY(u) - lift, floor)
+                val cy = logoY + (target - logoY) * t
                 DockButton(
                     a, t,
                     Modifier.align(Alignment.TopCenter).offset {
-                        IntOffset(tx.roundToInt(), (peakY + ty - with(dens) { 21.dp.toPx() }).roundToInt())
+                        IntOffset((slots[i] * (w / 2f) * t).roundToInt(), (cy - with(dens) { 20.dp.toPx() }).roundToInt())
                     },
                 )
             }
         }
 
-        // Logo xyd au sommet du fil : ouvre / ferme.
+        // Logo xyd sur la pointe : ouvre / ferme (petit « clic » élastique, le cercle s'illumine).
         Box(
             Modifier.align(Alignment.TopCenter)
-                .offset { IntOffset(0, (peakY - r).roundToInt()) }
-                .size(48.dp).clip(CircleShape)
-                .background(Brush.radialGradient(listOf(Color(0x33FFFFFF), Color(0x14FFFFFF))))
+                .offset { IntOffset(0, (logoY - r).roundToInt()) }
+                .size(42.dp).clip(CircleShape)
                 .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null, onClick = onToggle)
                 .semantics { contentDescription = if (expanded) "Fermer le menu" else "Ouvrir le menu" },
             contentAlignment = Alignment.Center,
         ) {
             Logo(
-                28.dp,
+                24.dp,
                 Modifier.graphicsLayer {
-                    rotationZ = logoTurn * 180f
-                    val s = 1f + 0.12f * kotlin.math.sin(logoTurn * Math.PI.toFloat())
+                    val s = 1f - 0.16f * press.value
                     scaleX = s; scaleY = s
                 },
             )
@@ -193,7 +201,7 @@ fun BottomDock(
 
 @Composable
 private fun DockButton(a: DockAction, t: Float, modifier: Modifier) {
-    val size: Dp = 42.dp
+    val size: Dp = 40.dp
     Box(
         modifier.size(size)
             .graphicsLayer {
