@@ -38,7 +38,6 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
-import androidx.compose.ui.graphics.RenderEffect
 import androidx.compose.ui.graphics.asComposeRenderEffect
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
@@ -204,8 +203,7 @@ private fun DockButton(a: DockAction, t: Float, modifier: Modifier) {
                 // Apparition floue → nette (Android 12+).
                 if (Build.VERSION.SDK_INT >= 31 && t < 0.98f) {
                     val b = (1f - t.coerceIn(0f, 1f)) * 10.dp.toPx()
-                    if (b > 0.5f) renderEffect = RenderEffect.createBlurEffect(b, b, android.graphics.Shader.TileMode.DECAL)
-                        .asComposeRenderEffect()
+                    if (b > 0.5f) renderEffect = androidx.compose.ui.graphics.BlurEffect(b, b, androidx.compose.ui.graphics.TileMode.Decal)
                 }
             }
             .clip(CircleShape)
