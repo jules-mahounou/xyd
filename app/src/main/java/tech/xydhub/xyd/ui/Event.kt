@@ -217,10 +217,10 @@ fun EventSection(e: CineEvent, downloads: Map<String, DownloadItem>, onPlay: (St
                     if (live && e.joined && ready) watch(fromStart = false) else join()
                 }
                 Spacer(Modifier.width(12.dp))
-                DownloadOrb(dl, ready) {
+                DownloadOrb(dl, ready, onClick = {
                     // Téléchargement immédiat, même en données mobiles (choix explicite).
                     if (playable != null && !ready) Downloads.enqueue(ctx, playable)
-                }
+                })
             }
 
             // Ligne d'état sous les boutons.
